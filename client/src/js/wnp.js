@@ -11,7 +11,7 @@ WNP.s = {
     locPort: (location.port && location.port != "80" && location.port != "1234") ? location.port : "80",
     rndAlbumArtUri: "./img/fake-album-1.jpg",
     // Device selection
-    aDeviceUI: ["btnPrev", "btnPlay", "btnNext", "btnRefresh", "selDeviceChoices", "devName", "devNameHolder", "mediaTitle", "mediaSubTitle", "mediaArtist", "mediaAlbum", "mediaBitRate", "mediaBitDepth", "mediaSampleRate", "mediaQualityIdent", "devVol", "btnRepeat", "btnShuffle", "progressPlayed", "progressLeft", "progressPercent", "mediaSource", "albumArt", "bgAlbumArtBlur", "btnDevSelect", "oDeviceList", "btnDevPreset", "oPresetList", "btnDevVolume", "rVolume", "lyricsContainer", "lyricsPrev", "lyricsCurrent", "lyricsNext", "mediaTitleArtist", "mediaTitleCompact", "mediaArtistCompact", "mediaTitleArtistSep", "mediaAlbumQuality", "mediaAlbumCompact", "mediaQualityCompact"],
+    aDeviceUI: ["btnPrev", "btnPlay", "btnNext", "btnRefresh", "selDeviceChoices", "devName", "devNameHolder", "mediaTitle", "mediaSubTitle", "mediaArtist", "mediaAlbum", "mediaBitRate", "mediaBitDepth", "mediaSampleRate", "mediaQualityIdent", "devVol", "btnRepeat", "btnShuffle", "progressPlayed", "progressLeft", "progressPercent", "mediaSource", "albumArt", "bgAlbumArtBlur", "btnDevSelect", "oDeviceList", "btnDevPreset", "oPresetList", "btnDevVolume", "rVolume", "lyricsContainer", "lyricsPrev", "lyricsCurrent", "lyricsNext", "mediaTitleArtist", "mediaTitleCompact", "mediaArtistCompact", "mediaAlbumQuality", "mediaAlbumCompact", "mediaQualityCompact"],
     // Server actions to be used in the app
     aServerUI: ["btnReboot", "btnUpdate", "btnShutdown", "btnReloadUI", "sServerUrlHostname", "sServerUrlIP", "sServerVersion", "sClientVersion", "chkLyricsEnabled", "lyricsOffsetMs"],
 };
@@ -839,9 +839,24 @@ WNP.parseSyncedLyrics = function (syncedLyrics) {
         }
     });
 
-    return parsed
+    const sorted = parsed
         .filter((entry) => entry.text !== "")
         .sort((a, b) => a.timeMs - b.timeMs);
+
+    if (!sorted.length) {
+        return sorted;
+    }
+
+    if (sorted[0].timeMs === 0) {
+        sorted[0].timeMs = 1;
+    }
+
+    sorted.unshift({
+        timeMs: 0,
+        text: "\u00a0"
+    });
+
+    return sorted;
 };
 
 /**

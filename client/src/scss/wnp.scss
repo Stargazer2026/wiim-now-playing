@@ -159,12 +159,32 @@
             display: none;
         }
 
+        .media-compact-block {
+            padding: 8px 12px;
+            margin-bottom: 8px;
+        }
+
         .media-compact-line {
             display: flex;
             justify-content: flex-start;
             align-items: baseline;
             gap: 6px;
             flex-wrap: wrap;
+        }
+
+        .media-compact-line--split {
+            justify-content: space-between;
+            width: 100%;
+            gap: 12px;
+        }
+
+        .media-compact-title {
+            flex: 1 1 auto;
+        }
+
+        .media-compact-artist {
+            flex: 0 0 auto;
+            text-align: right;
         }
 
         .media-compact-sep {
@@ -182,6 +202,10 @@
         #mediaAlbumCompact,
         #mediaQualityCompact {
             font-size: calc(.875rem + .3vw);
+        }
+
+        #mediaAlbumCompact {
+            font-size: calc(.875rem + .3vw + 2px);
         }
 
         .wnpLyrics {
