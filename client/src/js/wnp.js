@@ -515,12 +515,12 @@ WNP.setSocketDefinitions = function () {
             WNP.r.mediaQualityIdent.innerHTML = identId.outerHTML;
         }
 
-        if (WNP.r.mediaTitleCompact && WNP.r.mediaArtistCompact && WNP.r.mediaTitleArtistSep && WNP.r.mediaTitleArtist) {
+        if (WNP.r.mediaTitleCompact && WNP.r.mediaArtistCompact && WNP.r.mediaTitleArtist) {
             WNP.setCompactLine(
                 WNP.r.mediaTitleArtist,
                 WNP.r.mediaTitleCompact,
                 WNP.r.mediaArtistCompact,
-                WNP.r.mediaTitleArtistSep,
+                null,
                 WNP.r.mediaTitle.innerText,
                 WNP.r.mediaArtist.innerText
             );

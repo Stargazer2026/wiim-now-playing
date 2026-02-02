@@ -205,7 +205,7 @@
         }
 
         #mediaAlbumCompact {
-            font-size: calc(.875rem + .3vw + 2px);
+            font-size: calc(.875rem + .3vw + 0.125rem) !important;
         }
 
         .wnpLyrics {
