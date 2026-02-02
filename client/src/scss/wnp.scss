@@ -162,7 +162,7 @@
             display: flex;
             justify-content: center;
             align-items: baseline;
-            gap: 8px;
+            gap: 6px;
             flex-wrap: wrap;
         }
 
@@ -223,7 +223,8 @@
 
         // Media Album and Quality Ident
         #mediaAlbumIdent,
-        #mediaQualityIdent {
+        #mediaQualityIdent,
+        .media-compact-badge {
 
             &.badge-outlined {
                 border: 1px solid rgba(118, 125, 123, 1);
@@ -231,6 +232,10 @@
                 margin-right: 10px;
             }
 
+        }
+
+        .media-compact-badge.badge-outlined {
+            margin-right: 0;
         }
 
     }
