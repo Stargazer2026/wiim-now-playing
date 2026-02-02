@@ -927,7 +927,7 @@ WNP.updateLyricsProgress = function (relTime, timeStampDiff) {
         WNP.setLyricsLines(
             "",
             WNP.d.lyricsLines[0] ? WNP.d.lyricsLines[0].text : "",
-            WNP.d.lyricsLines[1] ? WNP.d.lyricsLines[1].text : ""
+            WNP.d.lyricsLines[1] ? WNP.d.lyricsLines[1].text : "\u00a0"
         );
         WNP.d.lyricsIndex = -1;
         return;
