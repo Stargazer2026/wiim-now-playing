@@ -6,7 +6,7 @@ WORKDIR /app
 
 # Clone the GitHub repository
 RUN apk add --no-cache git \
-    && git clone https://github.com/cvdlinden/wiim-now-playing.git . \
+    && git clone https://github.com/Stargazer2026/wiim-now-playing.git . \
     && npm install \
     && apk del git
 
