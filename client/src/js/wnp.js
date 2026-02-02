@@ -527,19 +527,6 @@ WNP.setSocketDefinitions = function () {
         }
         if (WNP.r.mediaAlbumCompact && WNP.r.mediaQualityCompact && WNP.r.mediaAlbumQuality) {
             var compactQuality = qualiIdent;
-            if (!compactQuality) {
-                const qualityParts = [];
-                if (songBitDepth) {
-                    qualityParts.push(songBitDepth + " bit");
-                }
-                if (songSampleRate) {
-                    qualityParts.push((songSampleRate / 1000).toFixed(1) + " kHz");
-                }
-                if (songBitrate) {
-                    qualityParts.push(songBitrate + " kbps");
-                }
-                compactQuality = qualityParts.join(" ");
-            }
             WNP.setCompactLine(
                 WNP.r.mediaAlbumQuality,
                 WNP.r.mediaAlbumCompact,
@@ -923,9 +910,9 @@ WNP.updateLyricsProgress = function (relTime, timeStampDiff) {
     if (currentIndex === -1) {
         WNP.setLyricsPending(true);
         WNP.setLyricsLines(
+            "",
             WNP.d.lyricsLines[0] ? WNP.d.lyricsLines[0].text : "",
-            WNP.d.lyricsLines[1] ? WNP.d.lyricsLines[1].text : "",
-            WNP.d.lyricsLines[2] ? WNP.d.lyricsLines[2].text : ""
+            WNP.d.lyricsLines[1] ? WNP.d.lyricsLines[1].text : ""
         );
         WNP.d.lyricsIndex = -1;
         return;
@@ -980,6 +967,7 @@ WNP.setCompactLine = function (container, leftEl, rightEl, sepEl, leftValue, rig
     if (sepEl) {
         sepEl.style.display = (hasLeft && hasRight) ? "" : "none";
     }
+    rightEl.style.display = hasRight ? "" : "none";
     container.style.display = (hasLeft || hasRight) ? "" : "none";
 };
 

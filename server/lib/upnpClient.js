@@ -20,6 +20,39 @@ const lib = require("./lib.js"); // Generic functionality
 const lyrics = require("./lyrics.js"); // Lyrics functionality
 const log = require("debug")("lib:upnpClient");
 
+const prefetchNextTracks = (result, serverSettings) => {
+    if (!result || !result.NextTrackMetaData) {
+        return;
+    }
+    xml2js.parseString(
+        result.NextTrackMetaData,
+        { explicitArray: false, ignoreAttrs: false },
+        (err, nextMetadataJson) => {
+            if (err) {
+                log("updateDeviceMetadata()", "NextTrackMetaData error", err);
+                return;
+            }
+            const items = nextMetadataJson && nextMetadataJson["DIDL-Lite"] && nextMetadataJson["DIDL-Lite"]["item"];
+            if (!items) {
+                return;
+            }
+            const itemList = Array.isArray(items) ? items : [items];
+            itemList.slice(0, 5).forEach((item) => {
+                if (!item) {
+                    return;
+                }
+                const res = item.res && item.res.$ ? item.res.$ : null;
+                const nextMetadata = {
+                    trackMetaData: item,
+                    TrackDuration: (res && res.duration) ? res.duration : (result.NextTrackDuration || null),
+                    TrackSource: result.NextTrackSource || result.TrackSource || ""
+                };
+                lyrics.prefetchLyricsForMetadata(nextMetadata, serverSettings);
+            });
+        }
+    );
+};
+
 /**
  * This function creates the UPnP Device Client.
  * @param {string} rendererUri - The device renderer uri.
@@ -203,24 +236,7 @@ const updateDeviceMetadata = (io, deviceInfo, serverSettings) => {
                                         lyrics.getLyricsForMetadata(io, deviceInfo, serverSettings).catch((error) => {
                                             log("Lyrics update error", error);
                                         });
-                                        if (result.NextTrackMetaData) {
-                                            xml2js.parseString(
-                                                result.NextTrackMetaData,
-                                                { explicitArray: false, ignoreAttrs: true },
-                                                (err, nextMetadataJson) => {
-                                                    if (err) {
-                                                        log("updateDeviceMetadata()", "NextTrackMetaData error", err);
-                                                    } else if (nextMetadataJson && nextMetadataJson["DIDL-Lite"] && nextMetadataJson["DIDL-Lite"]["item"]) {
-                                                        const nextMetadata = {
-                                                            trackMetaData: nextMetadataJson["DIDL-Lite"]["item"],
-                                                            TrackDuration: result.NextTrackDuration || null,
-                                                            TrackSource: result.NextTrackSource || result.TrackSource || ""
-                                                        };
-                                                        lyrics.prefetchLyricsForMetadata(nextMetadata, serverSettings);
-                                                    }
-                                                }
-                                            );
-                                        }
+                                        prefetchNextTracks(result, serverSettings);
                                     }
                                 }
                             );
@@ -234,24 +250,7 @@ const updateDeviceMetadata = (io, deviceInfo, serverSettings) => {
                             lyrics.getLyricsForMetadata(io, deviceInfo, serverSettings).catch((error) => {
                                 log("Lyrics update error", error);
                             });
-                            if (result.NextTrackMetaData) {
-                                xml2js.parseString(
-                                    result.NextTrackMetaData,
-                                    { explicitArray: false, ignoreAttrs: true },
-                                    (err, nextMetadataJson) => {
-                                        if (err) {
-                                            log("updateDeviceMetadata()", "NextTrackMetaData error", err);
-                                        } else if (nextMetadataJson && nextMetadataJson["DIDL-Lite"] && nextMetadataJson["DIDL-Lite"]["item"]) {
-                                            const nextMetadata = {
-                                                trackMetaData: nextMetadataJson["DIDL-Lite"]["item"],
-                                                TrackDuration: result.NextTrackDuration || null,
-                                                TrackSource: result.NextTrackSource || result.TrackSource || ""
-                                            };
-                                            lyrics.prefetchLyricsForMetadata(nextMetadata, serverSettings);
-                                        }
-                                    }
-                                );
-                            }
+                            prefetchNextTracks(result, serverSettings);
                         }
                     }
                 }
@@ -288,24 +287,7 @@ const updateDeviceMetadata = (io, deviceInfo, serverSettings) => {
                                         lyrics.getLyricsForMetadata(io, deviceInfo, serverSettings).catch((error) => {
                                             log("Lyrics update error", error);
                                         });
-                                        if (result.NextTrackMetaData) {
-                                            xml2js.parseString(
-                                                result.NextTrackMetaData,
-                                                { explicitArray: false, ignoreAttrs: true },
-                                                (err, nextMetadataJson) => {
-                                                    if (err) {
-                                                        log("updateDeviceMetadata()", "NextTrackMetaData error", err);
-                                                    } else if (nextMetadataJson && nextMetadataJson["DIDL-Lite"] && nextMetadataJson["DIDL-Lite"]["item"]) {
-                                                        const nextMetadata = {
-                                                            trackMetaData: nextMetadataJson["DIDL-Lite"]["item"],
-                                                            TrackDuration: result.NextTrackDuration || null,
-                                                            TrackSource: result.NextTrackSource || result.TrackSource || ""
-                                                        };
-                                                        lyrics.prefetchLyricsForMetadata(nextMetadata, serverSettings);
-                                                    }
-                                                }
-                                            );
-                                        }
+                                        prefetchNextTracks(result, serverSettings);
                                     }
                                 }
                             );
@@ -319,24 +301,7 @@ const updateDeviceMetadata = (io, deviceInfo, serverSettings) => {
                             lyrics.getLyricsForMetadata(io, deviceInfo, serverSettings).catch((error) => {
                                 log("Lyrics update error", error);
                             });
-                            if (result.NextTrackMetaData) {
-                                xml2js.parseString(
-                                    result.NextTrackMetaData,
-                                    { explicitArray: false, ignoreAttrs: true },
-                                    (err, nextMetadataJson) => {
-                                        if (err) {
-                                            log("updateDeviceMetadata()", "NextTrackMetaData error", err);
-                                        } else if (nextMetadataJson && nextMetadataJson["DIDL-Lite"] && nextMetadataJson["DIDL-Lite"]["item"]) {
-                                            const nextMetadata = {
-                                                trackMetaData: nextMetadataJson["DIDL-Lite"]["item"],
-                                                TrackDuration: result.NextTrackDuration || null,
-                                                TrackSource: result.NextTrackSource || result.TrackSource || ""
-                                            };
-                                            lyrics.prefetchLyricsForMetadata(nextMetadata, serverSettings);
-                                        }
-                                    }
-                                );
-                            }
+                            prefetchNextTracks(result, serverSettings);
                         }
                     }
                 }
