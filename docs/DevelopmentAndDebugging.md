@@ -19,6 +19,62 @@ node server/index.js
 
 *But then you will then need to restart node yourself on any change or if it crashes.*
 
+## Testing a pull request locally (macOS)
+
+Use the steps below if you want to check out a specific GitHub PR locally and run it on your Mac.
+
+1. Clone your fork (or the main repo) if you have not done so already:
+
+   ```shell
+   git clone https://github.com/<your-user>/wiim-now-playing.git
+   cd wiim-now-playing
+   ```
+
+2. Fetch the PR branch and check it out. Replace ``<PR_NUMBER>`` with the PR number:
+
+   ```shell
+   git fetch origin pull/<PR_NUMBER>/head:pr-<PR_NUMBER>
+   git checkout pr-<PR_NUMBER>
+   ```
+
+   If the PR was opened from a fork and you need a separate remote instead, add it first:
+
+   ```shell
+   git remote add contributor https://github.com/<contributor-user>/wiim-now-playing.git
+   git fetch contributor <branch-name>:pr-<PR_NUMBER>
+   git checkout pr-<PR_NUMBER>
+   ```
+
+3. Install dependencies:
+
+   ```shell
+   npm install
+   ```
+
+4. (Optional) Rebuild the client bundle if you want to be sure you are serving the latest client assets:
+
+   ```shell
+   npm run client-build
+   ```
+
+5. Start the server. macOS often blocks port 80 for non-root processes, so use a higher port:
+
+   ```shell
+   PORT=3000 node server/index.js
+   ```
+
+6. Open the app in your browser:
+
+   ```
+   http://localhost:3000
+   ```
+
+   The debug view is available at:
+
+   ```
+   http://localhost:3000/debug
+   ```
+
 ## Server side debugging
 
 If you want to know about the going-ons behind the scene:
