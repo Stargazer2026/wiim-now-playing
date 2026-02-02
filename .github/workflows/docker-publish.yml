@@ -32,6 +32,6 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: |
-            deinuser/deinimage:latest
-            deinuser/deinimage:${{ github.ref_name }}
+            stargazer2026/wiim-now-playing:latest
+            stargazer2026/wiim-now-playing:${{ github.ref_name }}
 
