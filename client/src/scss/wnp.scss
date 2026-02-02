@@ -150,6 +150,77 @@
             font-size: calc(.875rem + .3vw);
         }
 
+        #mediaTitle,
+        #mediaArtist,
+        #mediaSubTitle,
+        #mediaQuality,
+        div:has(>#mediaAlbum) {
+            display: none;
+        }
+
+        .media-compact-line {
+            display: flex;
+            justify-content: center;
+            align-items: baseline;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .media-compact-sep {
+            margin: 0 2px;
+        }
+
+        #mediaTitleCompact {
+            font-size: calc(1.325rem + .9vw);
+        }
+
+        #mediaArtistCompact {
+            font-size: calc(1.3rem + .6vw);
+        }
+
+        #mediaAlbumCompact,
+        #mediaQualityCompact {
+            font-size: calc(.875rem + .3vw);
+        }
+
+        .wnpLyrics {
+            display: none;
+            margin-top: 14px;
+            padding: 8px 12px;
+            border-radius: 12px;
+            background: rgba(0, 0, 0, 0.35);
+            backdrop-filter: blur(4px);
+            min-height: 84px;
+        }
+
+        .wnpLyrics.is-visible {
+            display: block;
+        }
+
+        .wnpLyrics.is-pending {
+            .lyrics-current {
+                font-weight: 400;
+                opacity: 0.65;
+            }
+        }
+
+        .lyrics-line {
+            text-align: center;
+            opacity: 0.65;
+            line-height: 1.35;
+        }
+
+        .lyrics-current {
+            font-weight: 600;
+            opacity: 1;
+            font-size: calc(1.325rem + .9vw);
+        }
+
+        .lyrics-prev,
+        .lyrics-next {
+            font-size: calc(1.3rem + .6vw);
+        }
+
         // Media Album and Quality Ident
         #mediaAlbumIdent,
         #mediaQualityIdent {
@@ -278,6 +349,21 @@
 
     // ===============================
     // Responsive layout changes
+    @media (orientation: landscape) {
+        .wnpMediaInfo {
+            #mediaTitle,
+            #mediaArtist,
+            #mediaSubTitle,
+            #mediaQuality,
+            div:has(>#mediaAlbum) {
+                display: block;
+            }
+
+            .media-compact-line {
+                display: none;
+            }
+        }
+    }
 
     // Small devices (landscape phones, 576px and up)
     @media (min-width: 576px) and (orientation: landscape) {
