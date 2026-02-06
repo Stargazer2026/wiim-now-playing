@@ -123,6 +123,36 @@ const buildTrackKey = (trackName, artistName, albumName, duration) => {
 
 const getCacheConfig = (serverSettings) => lyricsCache.getCacheConfig(serverSettings);
 
+const findCachedLyricsForSignature = (signature, serverSettings) => {
+    const baseTrackKey = buildTrackKey(signature.trackName, signature.artistName, signature.albumName, signature.duration);
+    const offsets = [0, -1, 1, -2, 2];
+    for (const offset of offsets) {
+        const duration = signature.duration + offset;
+        const candidateKey = buildTrackKey(signature.trackName, signature.artistName, signature.albumName, duration);
+        const cacheLookup = lyricsCache.getCachedLyrics(candidateKey, serverSettings);
+        if (cacheLookup.status === "hit" && cacheLookup.payload) {
+            const payload = {
+                ...cacheLookup.payload,
+                trackKey: baseTrackKey,
+                signature: {
+                    ...cacheLookup.payload.signature,
+                    duration: signature.duration
+                }
+            };
+            return {
+                ...cacheLookup,
+                payload,
+                status: offset === 0 ? "hit" : "hit-duration-offset",
+                lookupTrackKey: candidateKey
+            };
+        }
+        if (cacheLookup.status === "error") {
+            return cacheLookup;
+        }
+    }
+    return lyricsCache.getCachedLyrics(baseTrackKey, serverSettings);
+};
+
 const getPrefetchMode = (serverSettings) => {
     const mode = getCacheConfig(serverSettings).prefetch;
     if (mode === PREFETCH_MODES.ALBUM || mode === PREFETCH_MODES.ARTIST || mode === PREFETCH_MODES.OFF) {
@@ -395,7 +425,7 @@ const getLyricsForMetadata = async (io, deviceInfo, serverSettings) => {
         return;
     }
 
-    const cacheLookup = lyricsCache.getCachedLyrics(trackKey, serverSettings);
+    const cacheLookup = findCachedLyricsForSignature(signature, serverSettings);
     diagnostics.cacheLookupMs = cacheLookup.durationMs;
     diagnostics.cacheStatus = cacheLookup.status;
     diagnostics.cacheSizeBytes = cacheLookup.cacheConfig?.enabled
@@ -466,7 +496,7 @@ const fetchLyricsForSignature = async (signature, trackKey, serverSettings, diag
         };
     };
 
-    const cacheLookup = lyricsCache.getCachedLyrics(trackKey, serverSettings);
+    const cacheLookup = findCachedLyricsForSignature(signature, serverSettings);
     if (cacheLookup.status === "hit" && cacheLookup.payload) {
         return withPrefetchMetadata(cacheLookup.payload);
     }
@@ -514,6 +544,8 @@ const fetchLyricsForSignature = async (signature, trackKey, serverSettings, diag
                     const storeResult = lyricsCache.storeLyrics(bestPayload, serverSettings);
                     if (storeResult.stored) {
                         console.log(`Lyrics cached (${storeResult.size} bytes)`, trackKey);
+                    } else if (storeResult.error) {
+                        console.log(`Lyrics cache store skipped (${storeResult.error})`, trackKey);
                     }
                 } catch (error) {
                     log("Lyrics cache write error:", error.message);
@@ -617,7 +649,7 @@ const storeCandidateInCache = (candidate, serverSettings) => {
         syncedLyrics: candidate.syncedLyrics
     };
     const stored = lyricsCache.storeLyrics(payload, serverSettings);
-    return { trackKey, stored: stored.stored };
+    return { trackKey, stored: stored.stored, error: stored.error };
 };
 
 const prefetchCandidates = async (candidates, serverSettings) => {
@@ -686,6 +718,9 @@ const schedulePrefetchForSignature = (io, signature, serverSettings, options = {
                 totalStored += 1;
             } else {
                 totalSkipped += 1;
+                if (result?.error) {
+                    console.log(`Lyrics prefetch cache skipped (${result.error})`, result.trackKey);
+                }
             }
         });
 
@@ -702,6 +737,9 @@ const schedulePrefetchForSignature = (io, signature, serverSettings, options = {
                     totalStored += 1;
                 } else {
                     totalSkipped += 1;
+                    if (result?.error) {
+                        console.log(`Lyrics prefetch cache skipped (${result.error})`, result.trackKey);
+                    }
                 }
             });
         }
