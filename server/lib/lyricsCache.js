@@ -240,7 +240,7 @@ const storeLyrics = (payload, serverSettings) => {
         return { stored: false, cacheConfig };
     }
     if (!ensureDb(cacheConfig.path)) {
-        return { stored: false, cacheConfig };
+        return { stored: false, cacheConfig, error: "db-unavailable" };
     }
 
     try {
@@ -262,6 +262,11 @@ const storeLyrics = (payload, serverSettings) => {
             now
         ]);
 
+        const inserted = Boolean(statements.hasKey.get(payload.trackKey));
+        if (!inserted) {
+            return { stored: false, cacheConfig, error: "verify-failed" };
+        }
+
         const pruneResult = pruneCache(cacheConfig);
         return {
             stored: true,
@@ -272,7 +277,7 @@ const storeLyrics = (payload, serverSettings) => {
         };
     } catch (error) {
         log("Cache insert error:", error.message);
-        return { stored: false, cacheConfig };
+        return { stored: false, cacheConfig, error: error.message };
     }
 };
 
