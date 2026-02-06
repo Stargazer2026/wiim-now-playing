@@ -333,7 +333,7 @@ io.on("connection", (socket) => {
                 }
                 if (typeof msg.features.lyrics.cache.prefetch === "string") {
                     const prefetch = msg.features.lyrics.cache.prefetch;
-                    if (prefetch === "off" || prefetch === "album" || prefetch === "artist") {
+                    if (prefetch === "off" || prefetch === "album") {
                         serverSettings.features.lyrics.cache.prefetch = prefetch;
                     }
                 }
