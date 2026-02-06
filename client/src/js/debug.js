@@ -18,7 +18,7 @@ WNP.s = {
     // Ticks to be used in the app (debug)
     aTicksUI: ["tickDevicesGetUp", "tickDevicesRefreshUp", "tickServerSettingsUp", "tickStateUp", "tickStateDown", "tickMetadataUp", "tickMetadataDown", "tickLyricsUp", "tickLyricsDown", "tickDeviceSetUp", "tickDeviceSetDown", "tickServerSettingsDown", "tickDevicesGetDown", "tickDevicesRefreshDown", "tickVolumeGetUp", "tickVolumeGetDown", "tickVolumeSetUp", "tickVolumeSetDown", "tickPresetsListUp", "tickPresetsListDown"],
     // Debug UI elements
-    aDebugUI: ["state", "metadata", "lyrics", "lyricsStatus", "lyricsProvider", "lyricsTrackKey", "sPresetsList", "sServerSettings", "sManufacturer", "sModelName", "sLocation", "sTimeStampDiff", "sAlbumArtUri", "sAlbumArtUriRaw", "sAlbumArtUriStatus", "oPresetsGroup", "btnDevices", "btnGetVolume", "btnSetVolume", "mediaLoopMode", "sTransportState", "sPlayMedium", "sPlayerProgress"]
+    aDebugUI: ["state", "metadata", "lyrics", "lyricsStatus", "lyricsProvider", "lyricsTrackKey", "lyricsPrefetch", "lyricsPrefetchStatus", "lyricsPrefetchTrackKey", "sPresetsList", "sServerSettings", "sManufacturer", "sModelName", "sLocation", "sTimeStampDiff", "sAlbumArtUri", "sAlbumArtUriRaw", "sAlbumArtUriStatus", "oPresetsGroup", "btnDevices", "btnGetVolume", "btnSetVolume", "mediaLoopMode", "sTransportState", "sPlayMedium", "sPlayerProgress"]
 };
 
 // Data placeholders.
@@ -473,6 +473,19 @@ WNP.setSocketDefinitions = function () {
         WNP.r.lyricsStatus.innerText = (msg && msg.status) ? msg.status : "-";
         WNP.r.lyricsProvider.innerText = (msg && msg.provider) ? msg.provider : "-";
         WNP.r.lyricsTrackKey.innerText = (msg && msg.trackKey) ? msg.trackKey : "-";
+    });
+
+    socket.on("lyrics-prefetch", function (msg) {
+        console.log("IO: lyrics-prefetch", msg);
+        if (WNP.r.lyricsPrefetch) {
+            WNP.r.lyricsPrefetch.innerHTML = JSON.stringify(msg);
+        }
+        if (WNP.r.lyricsPrefetchStatus) {
+            WNP.r.lyricsPrefetchStatus.innerText = (msg && msg.status) ? msg.status : "-";
+        }
+        if (WNP.r.lyricsPrefetchTrackKey) {
+            WNP.r.lyricsPrefetchTrackKey.innerText = (msg && msg.trackKey) ? msg.trackKey : "-";
+        }
     });
 
     // On device set
