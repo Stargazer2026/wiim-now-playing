@@ -375,7 +375,13 @@ const fetchBestLyricsBySignature = async (signature, serverSettings, diagnostics
 const setLyricsState = (io, deviceInfo, payload) => {
     deviceInfo.lyrics = payload;
     io.emit("lyrics", payload);
-    console.log("Lyrics:", payload);
+    log("Lyrics:", {
+        status: payload?.status,
+        provider: payload?.provider,
+        trackKey: payload?.trackKey,
+        signature: payload?.signature,
+        diagnostics: payload?.diagnostics
+    });
 };
 
 const setLyricsPrefetchState = (io, payload) => {
@@ -383,7 +389,13 @@ const setLyricsPrefetchState = (io, payload) => {
         return;
     }
     io.emit("lyrics-prefetch", payload);
-    console.log("Lyrics Prefetch:", payload);
+    log("Lyrics Prefetch:", {
+        status: payload?.status,
+        reason: payload?.reason,
+        mode: payload?.mode,
+        trackKey: payload?.trackKey,
+        signature: payload?.signature
+    });
 };
 
 const clearLyrics = (io, deviceInfo, reason, signature, trackKey, diagnostics) => {
@@ -439,11 +451,15 @@ const getLyricsForMetadata = async (io, deviceInfo, serverSettings) => {
 
     if (cacheLookup.status === "hit" && cacheLookup.payload) {
         diagnostics.totalMs = Date.now() - diagnostics.requestedAt;
+        log(`Lyrics cache hit (${cacheLookup.durationMs}ms)`, trackKey);
         setLyricsState(io, deviceInfo, {
             ...cached.payload,
             diagnostics
         });
         return;
+    }
+    if (cacheLookup.status === "miss") {
+        log(`Lyrics cache miss (${cacheLookup.durationMs}ms)`, trackKey);
     }
 
     const snapshotDiagnostics = () => {
@@ -538,9 +554,9 @@ const fetchLyricsForSignature = async (signature, trackKey, serverSettings, diag
                     };
                     const storeResult = lyricsCache.storeLyrics(bestPayload, serverSettings);
                     if (storeResult.stored) {
-                        console.log(`Lyrics cached (${storeResult.size} bytes)`, trackKey);
+                        log(`Lyrics cached (${storeResult.size} bytes)`, trackKey);
                     } else if (storeResult.error) {
-                        console.log(`Lyrics cache store skipped (${storeResult.error})`, trackKey);
+                        log(`Lyrics cache store skipped (${storeResult.error})`, trackKey);
                     }
                 } catch (error) {
                     log("Lyrics cache write error:", error.message);
@@ -734,7 +750,7 @@ const schedulePrefetchForSignature = (io, signature, serverSettings, options = {
                 } else {
                     skippedOther += 1;
                     if (result?.error) {
-                        console.log(`Lyrics prefetch cache skipped (${result.error})`, result.trackKey);
+                        log(`Lyrics prefetch cache skipped (${result.error})`, result.trackKey);
                     }
                 }
             }
