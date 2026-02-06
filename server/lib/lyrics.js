@@ -14,8 +14,7 @@ const PREFETCH_BATCH_LIMIT = 20;
 const PREFETCH_CONCURRENCY_FALLBACK = 4;
 const PREFETCH_MODES = {
     OFF: "off",
-    ALBUM: "album",
-    ARTIST: "artist"
+    ALBUM: "album"
 };
 
 const negativeCache = new Map();
@@ -165,7 +164,7 @@ const findCachedLyricsForSignature = (signature, serverSettings) => {
 
 const getPrefetchMode = (serverSettings) => {
     const mode = getCacheConfig(serverSettings).prefetch;
-    if (mode === PREFETCH_MODES.ALBUM || mode === PREFETCH_MODES.ARTIST || mode === PREFETCH_MODES.OFF) {
+    if (mode === PREFETCH_MODES.ALBUM || mode === PREFETCH_MODES.OFF) {
         return mode;
     }
     return PREFETCH_MODES.OFF;
@@ -699,6 +698,17 @@ const schedulePrefetchForSignature = (io, signature, serverSettings, options = {
 
     const prefetchPromise = (async () => {
         const startedAt = Date.now();
+        const albumKey = normalizeAlbum(signature.albumName);
+        const artistKey = normalizeText(signature.artistName);
+        if (lyricsCache.hasAlbumPrefetchComplete(artistKey, albumKey, serverSettings)) {
+            setLyricsPrefetchState(io, {
+                status: "skipped",
+                reason: "album-prefetch-complete",
+                mode,
+                signature
+            });
+            return;
+        }
         setLyricsPrefetchState(io, {
             status: "start",
             mode,
@@ -710,6 +720,9 @@ const schedulePrefetchForSignature = (io, signature, serverSettings, options = {
         let totalStored = 0;
         let totalSkipped = 0;
         let totalCandidates = 0;
+        let skippedInFlight = 0;
+        let skippedCached = 0;
+        let skippedOther = 0;
 
         const albumParams = new URLSearchParams({
             album_name: signature.albumName,
@@ -728,30 +741,24 @@ const schedulePrefetchForSignature = (io, signature, serverSettings, options = {
                 totalStored += 1;
             } else {
                 totalSkipped += 1;
-                if (result?.error) {
-                    console.log(`Lyrics prefetch cache skipped (${result.error})`, result.trackKey);
-                }
-            }
-        });
-
-        if (mode === PREFETCH_MODES.ARTIST) {
-            const artistParams = new URLSearchParams({
-                artist_name: signature.artistName,
-                q: signature.artistName
-            });
-            const artistCandidates = await fetchPrefetchCandidates(artistParams, serverSettings);
-            totalCandidates += artistCandidates.length;
-            const artistResults = await prefetchCandidates(artistCandidates, serverSettings);
-            artistResults.forEach((result) => {
-                if (result?.stored) {
-                    totalStored += 1;
+                if (result?.skipped === "cached") {
+                    skippedCached += 1;
+                } else if (result?.skipped === "in-flight") {
+                    skippedInFlight += 1;
                 } else {
-                    totalSkipped += 1;
+                    skippedOther += 1;
                     if (result?.error) {
                         console.log(`Lyrics prefetch cache skipped (${result.error})`, result.trackKey);
                     }
                 }
-            });
+            }
+        });
+
+        const shouldMarkAlbumComplete = totalCandidates > 0
+            && skippedInFlight === 0
+            && skippedOther === 0;
+        if (shouldMarkAlbumComplete) {
+            lyricsCache.markAlbumPrefetchComplete(artistKey, albumKey, serverSettings);
         }
 
         setLyricsPrefetchState(io, {
@@ -763,7 +770,10 @@ const schedulePrefetchForSignature = (io, signature, serverSettings, options = {
             totalMs: Date.now() - startedAt,
             totalCandidates,
             stored: totalStored,
-            skipped: totalSkipped
+            skipped: totalSkipped,
+            skippedCached,
+            skippedInFlight,
+            skippedOther
         });
     })().catch((error) => {
         log("LRCLIB prefetch error:", error.message);

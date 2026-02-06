@@ -71,11 +71,28 @@ const ensureDb = (cachePath) => {
             );
             CREATE INDEX IF NOT EXISTS idx_lyrics_cache_last_accessed
                 ON lyrics_cache (lastAccessedAt ASC);
+
+            CREATE TABLE IF NOT EXISTS lyrics_album_prefetch (
+                artistKey TEXT,
+                albumKey TEXT,
+                completedAt INTEGER,
+                PRIMARY KEY (artistKey, albumKey)
+            );
         `);
 
         statements = {
             getByKey: db.prepare("SELECT * FROM lyrics_cache WHERE trackKey = ?"),
             hasKey: db.prepare("SELECT 1 FROM lyrics_cache WHERE trackKey = ?"),
+            hasAlbumPrefetch: db.prepare(
+                "SELECT 1 FROM lyrics_album_prefetch WHERE artistKey = ? AND albumKey = ?"
+            ),
+            markAlbumPrefetch: db.prepare(`
+                INSERT OR REPLACE INTO lyrics_album_prefetch (
+                    artistKey,
+                    albumKey,
+                    completedAt
+                ) VALUES (?, ?, ?)
+            `),
             insert: db.prepare(`
                 INSERT OR REPLACE INTO lyrics_cache (
                     trackKey,
@@ -296,6 +313,30 @@ const closeCache = () => {
     }
 };
 
+const hasAlbumPrefetchComplete = (artistKey, albumKey, serverSettings) => {
+    const cacheConfig = getCacheConfig(serverSettings);
+    if (!cacheConfig.enabled) {
+        return false;
+    }
+    if (!ensureDb(cacheConfig.path)) {
+        return false;
+    }
+    return Boolean(statements.hasAlbumPrefetch.get(artistKey, albumKey));
+};
+
+const markAlbumPrefetchComplete = (artistKey, albumKey, serverSettings) => {
+    const cacheConfig = getCacheConfig(serverSettings);
+    if (!cacheConfig.enabled) {
+        return false;
+    }
+    if (!ensureDb(cacheConfig.path)) {
+        return false;
+    }
+    const now = Date.now();
+    statements.markAlbumPrefetch.run(artistKey, albumKey, now);
+    return true;
+};
+
 module.exports = {
     getCacheConfig,
     getCacheStats,
@@ -303,5 +344,7 @@ module.exports = {
     hasCachedLyrics,
     storeLyrics,
     pruneCache,
-    closeCache
+    closeCache,
+    hasAlbumPrefetchComplete,
+    markAlbumPrefetchComplete
 };
