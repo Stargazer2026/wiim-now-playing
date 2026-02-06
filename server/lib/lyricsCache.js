@@ -9,7 +9,8 @@ const zlib = require("zlib");
 const { DatabaseSync } = require("node:sqlite");
 const log = require("debug")("lib:lyrics-cache");
 
-const DEFAULT_CACHE_PATH = path.join(__dirname, "..", "lyrics-cache.sqlite");
+const DEFAULT_CACHE_PATH = process.env.LYRICS_CACHE_PATH
+    || "/var/lib/wiim-now-playing/lyrics-cache.sqlite";
 const BROTLI_OPTIONS = {
     params: {
         [zlib.constants.BROTLI_PARAM_QUALITY]: 4,
