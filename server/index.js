@@ -31,6 +31,7 @@ const sockets = require("./lib/sockets.js"); // Sockets.io functionality
 const shell = require("./lib/shell.js"); // Shell command functionality
 const lib = require("./lib/lib.js"); // Generic functionality
 const lyrics = require("./lib/lyrics.js"); // Lyrics functionality
+const lyricsCache = require("./lib/lyricsCache.js");
 const log = require("debug")("index"); // See README.md on debugging
 
 // For versionioning purposes
@@ -381,3 +382,15 @@ server.listen(port, () => {
     serverSettings.server = server.address();
     console.log("Web Server started at http://localhost:%s", server.address().port);
 });
+
+const shutdownServer = (signal) => {
+    log("Shutdown signal received:", signal);
+    try {
+        lyricsCache.closeCache();
+    } finally {
+        process.exit(0);
+    }
+};
+
+process.on("SIGINT", () => shutdownServer("SIGINT"));
+process.on("SIGTERM", () => shutdownServer("SIGTERM"));

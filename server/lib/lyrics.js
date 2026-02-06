@@ -309,10 +309,15 @@ const fetchBestLyricsBySignature = async (signature, serverSettings, diagnostics
         duration: signature.duration
     });
 
+    const searchParams = new URLSearchParams({
+        track_name: signature.trackName,
+        artist_name: signature.artistName,
+        album_name: signature.albumName
+    });
     const results = await Promise.all([
         fetchJsonWithTiming(`/api/get-cached?${params.toString()}`, serverSettings, diagnostics, "get-cached"),
         fetchJsonWithTiming(`/api/get?${params.toString()}`, serverSettings, diagnostics, "get"),
-        fetchJsonWithTiming(`/api/search?${params.toString()}`, serverSettings, diagnostics, "search")
+        fetchJsonWithTiming(`/api/search?${searchParams.toString()}`, serverSettings, diagnostics, "search")
     ].map((promise) => promise.catch(() => null)));
 
     const candidates = [];
@@ -666,7 +671,8 @@ const schedulePrefetchForSignature = (io, signature, serverSettings, options = {
 
         const albumParams = new URLSearchParams({
             album_name: signature.albumName,
-            artist_name: signature.artistName
+            artist_name: signature.artistName,
+            q: `${signature.artistName} ${signature.albumName}`
         });
         const albumCandidates = mode !== PREFETCH_MODES.OFF
             ? (await fetchPrefetchCandidates(albumParams, serverSettings))
@@ -685,7 +691,8 @@ const schedulePrefetchForSignature = (io, signature, serverSettings, options = {
 
         if (mode === PREFETCH_MODES.ARTIST) {
             const artistParams = new URLSearchParams({
-                artist_name: signature.artistName
+                artist_name: signature.artistName,
+                q: signature.artistName
             });
             const artistCandidates = await fetchPrefetchCandidates(artistParams, serverSettings);
             totalCandidates += artistCandidates.length;
