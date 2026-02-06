@@ -276,11 +276,27 @@ const storeLyrics = (payload, serverSettings) => {
     }
 };
 
+const closeCache = () => {
+    if (!db) {
+        return;
+    }
+    try {
+        db.close();
+        log("Cache database closed");
+    } catch (error) {
+        log("Cache database close error:", error.message);
+    } finally {
+        db = null;
+        statements = null;
+    }
+};
+
 module.exports = {
     getCacheConfig,
     getCacheStats,
     getCachedLyrics,
     hasCachedLyrics,
     storeLyrics,
-    pruneCache
+    pruneCache,
+    closeCache
 };
