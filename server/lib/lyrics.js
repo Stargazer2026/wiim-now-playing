@@ -287,10 +287,15 @@ const fetchBestLyricsBySignature = async (signature, serverSettings, diagnostics
         duration: signature.duration
     });
 
+    const searchParams = new URLSearchParams({
+        track_name: signature.trackName,
+        artist_name: signature.artistName,
+        album_name: signature.albumName
+    });
     const results = await Promise.all([
         fetchJsonWithTiming(`/api/get-cached?${params.toString()}`, serverSettings, diagnostics, "get-cached"),
         fetchJsonWithTiming(`/api/get?${params.toString()}`, serverSettings, diagnostics, "get"),
-        fetchJsonWithTiming(`/api/search?${params.toString()}`, serverSettings, diagnostics, "search")
+        fetchJsonWithTiming(`/api/search?${searchParams.toString()}`, serverSettings, diagnostics, "search")
     ].map((promise) => promise.catch(() => null)));
 
     const candidates = [];
@@ -476,7 +481,6 @@ const fetchLyricsForSignature = async (signature, trackKey, serverSettings, diag
                 } catch (error) {
                     log("Lyrics cache write error:", error.message);
                 }
->>>>>>> 89cf306 (Harden lyrics cache and store best match)
             });
             return payload;
         }
@@ -504,6 +508,195 @@ const fetchLyricsForSignature = async (signature, trackKey, serverSettings, diag
     }
 };
 
+const matchesAlbum = (candidate, signature) => {
+    if (!candidate?.albumName || !signature?.albumName) {
+        return false;
+    }
+    const candidateAlbum = normalizeAlbum(candidate.albumName);
+    const signatureAlbum = normalizeAlbum(signature.albumName);
+    if (!candidateAlbum || !signatureAlbum) {
+        return false;
+    }
+    return candidateAlbum === signatureAlbum
+        || candidateAlbum.includes(signatureAlbum)
+        || signatureAlbum.includes(candidateAlbum);
+};
+
+const fetchPrefetchCandidates = async (params, serverSettings) => {
+    const results = await fetchJson(`/api/search?${params.toString()}`, serverSettings);
+    if (!Array.isArray(results)) {
+        return [];
+    }
+    return results
+        .filter((candidate) => candidate && candidate.syncedLyrics && !candidate.instrumental)
+        .slice(0, PREFETCH_BATCH_LIMIT);
+};
+
+const runWithConcurrency = async (items, limit, handler) => new Promise((resolve) => {
+    const results = [];
+    let index = 0;
+    let active = 0;
+
+    const next = () => {
+        if (index >= items.length && active === 0) {
+            resolve(results);
+            return;
+        }
+        while (active < limit && index < items.length) {
+            const item = items[index++];
+            active += 1;
+            Promise.resolve(handler(item))
+                .then((result) => results.push(result))
+                .catch((error) => results.push({ error }))
+                .finally(() => {
+                    active -= 1;
+                    next();
+                });
+        }
+    };
+
+    next();
+});
+
+const storeCandidateInCache = (candidate, serverSettings) => {
+    const signature = {
+        trackName: candidate.trackName,
+        artistName: candidate.artistName,
+        albumName: candidate.albumName,
+        duration: candidate.duration
+    };
+    const trackKey = buildTrackKey(signature.trackName, signature.artistName, signature.albumName, signature.duration);
+    const payload = {
+        status: "ok",
+        provider: "lrclib",
+        trackKey,
+        signature,
+        id: candidate.id,
+        trackName: candidate.trackName,
+        artistName: candidate.artistName,
+        albumName: candidate.albumName,
+        duration: candidate.duration,
+        instrumental: candidate.instrumental,
+        syncedLyrics: candidate.syncedLyrics
+    };
+    const stored = lyricsCache.storeLyrics(payload, serverSettings);
+    return { trackKey, stored: stored.stored };
+};
+
+const prefetchCandidates = async (candidates, serverSettings) => {
+    const cacheConfig = getCacheConfig(serverSettings);
+    const limit = cacheConfig.maxPrefetchConcurrency || PREFETCH_CONCURRENCY_FALLBACK;
+    return runWithConcurrency(candidates, limit, async (candidate) => {
+        const signature = {
+            trackName: candidate.trackName,
+            artistName: candidate.artistName,
+            albumName: candidate.albumName,
+            duration: candidate.duration
+        };
+        const trackKey = buildTrackKey(signature.trackName, signature.artistName, signature.albumName, signature.duration);
+        if (lyricsCache.hasCachedLyrics(trackKey, serverSettings)) {
+            return { trackKey, skipped: "cached" };
+        }
+        if (inFlightRequests.has(trackKey)) {
+            return { trackKey, skipped: "in-flight" };
+        }
+        return storeCandidateInCache(candidate, serverSettings);
+    });
+};
+
+const schedulePrefetchForSignature = (io, signature, serverSettings, options = {}) => {
+    const cacheConfig = getCacheConfig(serverSettings);
+    if (!cacheConfig.enabled) {
+        return;
+    }
+    const mode = getPrefetchMode(serverSettings);
+    if (mode === PREFETCH_MODES.OFF) {
+        return;
+    }
+    const prefetchKey = `${signature.trackName}|${signature.artistName}|${signature.albumName}|${signature.duration}|${mode}`;
+    if (prefetchInFlight.has(prefetchKey)) {
+        return;
+    }
+
+    const prefetchPromise = (async () => {
+        const startedAt = Date.now();
+        setLyricsPrefetchState(io, {
+            status: "start",
+            mode,
+            signature,
+            reason: options.reason || "unknown",
+            startedAt
+        });
+
+        let totalStored = 0;
+        let totalSkipped = 0;
+        let totalCandidates = 0;
+
+        const albumParams = new URLSearchParams({
+            album_name: signature.albumName,
+            artist_name: signature.artistName,
+            q: `${signature.artistName} ${signature.albumName}`
+        });
+        const albumCandidates = mode !== PREFETCH_MODES.OFF
+            ? (await fetchPrefetchCandidates(albumParams, serverSettings))
+                .filter((candidate) => matchesAlbum(candidate, signature))
+            : [];
+
+        totalCandidates += albumCandidates.length;
+        const albumResults = await prefetchCandidates(albumCandidates, serverSettings);
+        albumResults.forEach((result) => {
+            if (result?.stored) {
+                totalStored += 1;
+            } else {
+                totalSkipped += 1;
+            }
+        });
+
+        if (mode === PREFETCH_MODES.ARTIST) {
+            const artistParams = new URLSearchParams({
+                artist_name: signature.artistName,
+                q: signature.artistName
+            });
+            const artistCandidates = await fetchPrefetchCandidates(artistParams, serverSettings);
+            totalCandidates += artistCandidates.length;
+            const artistResults = await prefetchCandidates(artistCandidates, serverSettings);
+            artistResults.forEach((result) => {
+                if (result?.stored) {
+                    totalStored += 1;
+                } else {
+                    totalSkipped += 1;
+                }
+            });
+        }
+
+        setLyricsPrefetchState(io, {
+            status: "done",
+            mode,
+            signature,
+            reason: options.reason || "unknown",
+            startedAt,
+            totalMs: Date.now() - startedAt,
+            totalCandidates,
+            stored: totalStored,
+            skipped: totalSkipped
+        });
+    })().catch((error) => {
+        log("LRCLIB prefetch error:", error.message);
+        setLyricsPrefetchState(io, {
+            status: "error",
+            mode: getPrefetchMode(serverSettings),
+            signature,
+            reason: options.reason || "unknown",
+            error: error.message
+        });
+    }).finally(() => {
+        prefetchInFlight.delete(prefetchKey);
+    });
+
+    prefetchInFlight.set(prefetchKey, prefetchPromise);
+};
+
+>>>>>>> d8c8019 (Fix lyrics prefetch queries and close cache on shutdown)
 const prefetchLyricsForMetadata = async (io, metadata, serverSettings, options = {}) => {
     const enabled = serverSettings?.features?.lyrics?.enabled;
     if (!enabled || !metadata || !metadata.trackMetaData) {
