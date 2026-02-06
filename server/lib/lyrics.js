@@ -99,12 +99,22 @@ const parseDurationToSeconds = (duration) => {
     return null;
 };
 
+const normalizeDurationForKey = (duration) => {
+    if (duration === null || duration === undefined) {
+        return "";
+    }
+    if (typeof duration === "number" && Number.isFinite(duration)) {
+        return Math.round(duration);
+    }
+    return duration;
+};
+
 const buildTrackKey = (trackName, artistName, albumName, duration) => {
     const base = [
         normalizeText(trackName),
         normalizeText(artistName),
         normalizeText(albumName),
-        duration || ""
+        normalizeDurationForKey(duration)
     ].join("|");
     return base;
 };
@@ -611,7 +621,7 @@ const storeCandidateInCache = (candidate, serverSettings) => {
         trackName: candidate.trackName,
         artistName: candidate.artistName,
         albumName: candidate.albumName,
-        duration: candidate.duration
+        duration: normalizeDurationForKey(candidate.duration)
     };
     const trackKey = buildTrackKey(signature.trackName, signature.artistName, signature.albumName, signature.duration);
     const payload = {
@@ -623,7 +633,7 @@ const storeCandidateInCache = (candidate, serverSettings) => {
         trackName: candidate.trackName,
         artistName: candidate.artistName,
         albumName: candidate.albumName,
-        duration: candidate.duration,
+        duration: signature.duration,
         instrumental: candidate.instrumental,
         syncedLyrics: candidate.syncedLyrics
     };
@@ -639,7 +649,7 @@ const prefetchCandidates = async (candidates, serverSettings) => {
             trackName: candidate.trackName,
             artistName: candidate.artistName,
             albumName: candidate.albumName,
-            duration: candidate.duration
+            duration: normalizeDurationForKey(candidate.duration)
         };
         const trackKey = buildTrackKey(signature.trackName, signature.artistName, signature.albumName, signature.duration);
         if (lyricsCache.hasCachedLyrics(trackKey, serverSettings)) {
