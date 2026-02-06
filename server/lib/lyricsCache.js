@@ -19,6 +19,7 @@ const BROTLI_OPTIONS = {
 
 let db = null;
 let statements = null;
+let dbError = null;
 
 const getCacheConfig = (serverSettings) => {
     const cacheSettings = serverSettings?.features?.lyrics?.cache || {};
@@ -38,63 +39,75 @@ const getCacheConfig = (serverSettings) => {
 
 const ensureDb = (cachePath) => {
     if (db) {
-        return;
+        return true;
+    }
+    if (dbError) {
+        return false;
     }
     const directory = path.dirname(cachePath);
-    if (!fs.existsSync(directory)) {
-        fs.mkdirSync(directory, { recursive: true });
+    try {
+        if (!fs.existsSync(directory)) {
+            fs.mkdirSync(directory, { recursive: true });
+        }
+
+        db = new DatabaseSync(cachePath);
+        db.exec("PRAGMA journal_mode = WAL;");
+        db.exec("PRAGMA synchronous = NORMAL;");
+
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS lyrics_cache (
+                trackKey TEXT PRIMARY KEY,
+                trackName TEXT,
+                artistName TEXT,
+                albumName TEXT,
+                duration INTEGER,
+                provider TEXT,
+                lrclibId INTEGER,
+                instrumental INTEGER,
+                syncedLyrics BLOB,
+                syncedLyricsSize INTEGER,
+                fetchedAt INTEGER,
+                lastAccessedAt INTEGER
+            );
+            CREATE INDEX IF NOT EXISTS idx_lyrics_cache_last_accessed
+                ON lyrics_cache (lastAccessedAt ASC);
+        `);
+
+        statements = {
+            getByKey: db.prepare("SELECT * FROM lyrics_cache WHERE trackKey = ?"),
+            hasKey: db.prepare("SELECT 1 FROM lyrics_cache WHERE trackKey = ?"),
+            insert: db.prepare(`
+                INSERT OR REPLACE INTO lyrics_cache (
+                    trackKey,
+                    trackName,
+                    artistName,
+                    albumName,
+                    duration,
+                    provider,
+                    lrclibId,
+                    instrumental,
+                    syncedLyrics,
+                    syncedLyricsSize,
+                    fetchedAt,
+                    lastAccessedAt
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `),
+            touch: db.prepare("UPDATE lyrics_cache SET lastAccessedAt = ? WHERE trackKey = ?"),
+            totalSize: db.prepare("SELECT COALESCE(SUM(syncedLyricsSize), 0) AS totalSize FROM lyrics_cache"),
+            count: db.prepare("SELECT COUNT(1) AS totalCount FROM lyrics_cache"),
+            oldest: db.prepare("SELECT trackKey, syncedLyricsSize FROM lyrics_cache ORDER BY lastAccessedAt ASC LIMIT ?"),
+            deleteByKey: db.prepare("DELETE FROM lyrics_cache WHERE trackKey = ?")
+        };
+
+        log("Cache database ready:", cachePath);
+        return true;
+    } catch (error) {
+        dbError = error;
+        log("Cache database error:", error.message);
+        db = null;
+        statements = null;
+        return false;
     }
-
-    db = new DatabaseSync(cachePath);
-    db.exec("PRAGMA journal_mode = WAL;");
-    db.exec("PRAGMA synchronous = NORMAL;");
-
-    db.exec(`
-        CREATE TABLE IF NOT EXISTS lyrics_cache (
-            trackKey TEXT PRIMARY KEY,
-            trackName TEXT,
-            artistName TEXT,
-            albumName TEXT,
-            duration INTEGER,
-            provider TEXT,
-            lrclibId INTEGER,
-            instrumental INTEGER,
-            syncedLyrics BLOB,
-            syncedLyricsSize INTEGER,
-            fetchedAt INTEGER,
-            lastAccessedAt INTEGER
-        );
-        CREATE INDEX IF NOT EXISTS idx_lyrics_cache_last_accessed
-            ON lyrics_cache (lastAccessedAt ASC);
-    `);
-
-    statements = {
-        getByKey: db.prepare("SELECT * FROM lyrics_cache WHERE trackKey = ?"),
-        hasKey: db.prepare("SELECT 1 FROM lyrics_cache WHERE trackKey = ?"),
-        insert: db.prepare(`
-            INSERT OR REPLACE INTO lyrics_cache (
-                trackKey,
-                trackName,
-                artistName,
-                albumName,
-                duration,
-                provider,
-                lrclibId,
-                instrumental,
-                syncedLyrics,
-                syncedLyricsSize,
-                fetchedAt,
-                lastAccessedAt
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `),
-        touch: db.prepare("UPDATE lyrics_cache SET lastAccessedAt = ? WHERE trackKey = ?"),
-        totalSize: db.prepare("SELECT COALESCE(SUM(syncedLyricsSize), 0) AS totalSize FROM lyrics_cache"),
-        count: db.prepare("SELECT COUNT(1) AS totalCount FROM lyrics_cache"),
-        oldest: db.prepare("SELECT trackKey, syncedLyricsSize FROM lyrics_cache ORDER BY lastAccessedAt ASC LIMIT ?"),
-        deleteByKey: db.prepare("DELETE FROM lyrics_cache WHERE trackKey = ?")
-    };
-
-    log("Cache database ready:", cachePath);
 };
 
 const compressLyrics = (text) => {
@@ -116,7 +129,9 @@ const getCacheStats = (cacheConfig) => {
     if (!cacheConfig.enabled) {
         return { totalSize: 0, totalCount: 0 };
     }
-    ensureDb(cacheConfig.path);
+    if (!ensureDb(cacheConfig.path)) {
+        return { totalSize: 0, totalCount: 0 };
+    }
     return {
         totalSize: statements.totalSize.get().totalSize || 0,
         totalCount: statements.count.get().totalCount || 0
@@ -129,7 +144,9 @@ const getCachedLyrics = (trackKey, serverSettings) => {
     if (!cacheConfig.enabled) {
         return { status: "disabled", durationMs: Date.now() - startedAt, cacheConfig };
     }
-    ensureDb(cacheConfig.path);
+    if (!ensureDb(cacheConfig.path)) {
+        return { status: "error", durationMs: Date.now() - startedAt, cacheConfig };
+    }
 
     const row = statements.getByKey.get(trackKey);
     const durationMs = Date.now() - startedAt;
@@ -176,7 +193,9 @@ const hasCachedLyrics = (trackKey, serverSettings) => {
     if (!cacheConfig.enabled) {
         return false;
     }
-    ensureDb(cacheConfig.path);
+    if (!ensureDb(cacheConfig.path)) {
+        return false;
+    }
     return Boolean(statements.hasKey.get(trackKey));
 };
 
@@ -184,7 +203,9 @@ const pruneCache = (cacheConfig) => {
     if (!cacheConfig.enabled) {
         return { removed: 0, totalSize: 0 };
     }
-    ensureDb(cacheConfig.path);
+    if (!ensureDb(cacheConfig.path)) {
+        return { removed: 0, totalSize: 0 };
+    }
 
     let totalSize = statements.totalSize.get().totalSize || 0;
     if (totalSize <= cacheConfig.maxSizeBytes) {
@@ -218,34 +239,41 @@ const storeLyrics = (payload, serverSettings) => {
     if (!cacheConfig.enabled || !payload || payload.status !== "ok" || !payload.syncedLyrics) {
         return { stored: false, cacheConfig };
     }
-    ensureDb(cacheConfig.path);
+    if (!ensureDb(cacheConfig.path)) {
+        return { stored: false, cacheConfig };
+    }
 
-    const { buffer, size } = compressLyrics(payload.syncedLyrics);
-    const now = Date.now();
+    try {
+        const { buffer, size } = compressLyrics(payload.syncedLyrics);
+        const now = Date.now();
 
-    statements.insert.run([
-        payload.trackKey,
-        payload.trackName,
-        payload.artistName,
-        payload.albumName,
-        payload.duration,
-        payload.provider || "lrclib",
-        payload.id || null,
-        payload.instrumental ? 1 : 0,
-        buffer,
-        size,
-        now,
-        now
-    ]);
+        statements.insert.run([
+            payload.trackKey,
+            payload.trackName,
+            payload.artistName,
+            payload.albumName,
+            payload.duration,
+            payload.provider || "lrclib",
+            payload.id || null,
+            payload.instrumental ? 1 : 0,
+            buffer,
+            size,
+            now,
+            now
+        ]);
 
-    const pruneResult = pruneCache(cacheConfig);
-    return {
-        stored: true,
-        cacheConfig,
-        size,
-        pruned: pruneResult.removed,
-        totalSize: pruneResult.totalSize
-    };
+        const pruneResult = pruneCache(cacheConfig);
+        return {
+            stored: true,
+            cacheConfig,
+            size,
+            pruned: pruneResult.removed,
+            totalSize: pruneResult.totalSize
+        };
+    } catch (error) {
+        log("Cache insert error:", error.message);
+        return { stored: false, cacheConfig };
+    }
 };
 
 module.exports = {

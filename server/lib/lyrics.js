@@ -301,6 +301,38 @@ const fetchLyricsBySignature = async (signature, serverSettings, diagnostics) =>
     return null;
 };
 
+const fetchBestLyricsBySignature = async (signature, serverSettings, diagnostics) => {
+    const params = new URLSearchParams({
+        track_name: signature.trackName,
+        artist_name: signature.artistName,
+        album_name: signature.albumName,
+        duration: signature.duration
+    });
+
+    const results = await Promise.all([
+        fetchJsonWithTiming(`/api/get-cached?${params.toString()}`, serverSettings, diagnostics, "get-cached"),
+        fetchJsonWithTiming(`/api/get?${params.toString()}`, serverSettings, diagnostics, "get"),
+        fetchJsonWithTiming(`/api/search?${params.toString()}`, serverSettings, diagnostics, "search")
+    ].map((promise) => promise.catch(() => null)));
+
+    const candidates = [];
+    results.forEach((result) => {
+        if (!result) {
+            return;
+        }
+        if (Array.isArray(result)) {
+            candidates.push(...result);
+        } else {
+            candidates.push(result);
+        }
+    });
+
+    if (!candidates.length) {
+        return null;
+    }
+    return filterCandidates(candidates, signature);
+};
+
 const setLyricsState = (io, deviceInfo, payload) => {
     deviceInfo.lyrics = payload;
     io.emit("lyrics", payload);
@@ -460,10 +492,28 @@ const fetchLyricsForSignature = async (signature, trackKey, serverSettings, diag
                 instrumental: lyrics.instrumental,
                 syncedLyrics: lyrics.syncedLyrics
             };
-            const storeResult = lyricsCache.storeLyrics(payload, serverSettings);
-            if (storeResult.stored) {
-                console.log(`Lyrics cached (${storeResult.size} bytes)`, trackKey);
-            }
+            setImmediate(async () => {
+                try {
+                    const bestLyrics = await fetchBestLyricsBySignature(signature, serverSettings, null);
+                    const candidate = bestLyrics || lyrics;
+                    const bestPayload = {
+                        ...payload,
+                        id: candidate.id,
+                        trackName: candidate.trackName,
+                        artistName: candidate.artistName,
+                        albumName: candidate.albumName,
+                        duration: candidate.duration,
+                        instrumental: candidate.instrumental,
+                        syncedLyrics: candidate.syncedLyrics
+                    };
+                    const storeResult = lyricsCache.storeLyrics(bestPayload, serverSettings);
+                    if (storeResult.stored) {
+                        console.log(`Lyrics cached (${storeResult.size} bytes)`, trackKey);
+                    }
+                } catch (error) {
+                    log("Lyrics cache write error:", error.message);
+                }
+            });
             return payload;
         }
 
