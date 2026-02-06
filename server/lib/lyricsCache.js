@@ -247,7 +247,7 @@ const storeLyrics = (payload, serverSettings) => {
         const { buffer, size } = compressLyrics(payload.syncedLyrics);
         const now = Date.now();
 
-        statements.insert.run([
+        statements.insert.run(
             payload.trackKey,
             payload.trackName,
             payload.artistName,
@@ -260,7 +260,7 @@ const storeLyrics = (payload, serverSettings) => {
             size,
             now,
             now
-        ]);
+        );
 
         const inserted = Boolean(statements.hasKey.get(payload.trackKey));
         if (!inserted) {
