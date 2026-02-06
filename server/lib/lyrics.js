@@ -125,7 +125,7 @@ const buildTrackKey = (trackName, artistName, albumName, duration) => {
     const base = [
         normalizeText(trackName),
         normalizeText(artistName),
-        normalizeText(albumName),
+        normalizeAlbum(albumName),
         normalizeDurationForKey(duration)
     ].join("|");
     return base;
