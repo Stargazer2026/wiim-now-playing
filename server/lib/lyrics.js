@@ -109,6 +109,46 @@ const buildTrackKey = (trackName, artistName, albumName, duration) => {
     return base;
 };
 
+const getCacheConfig = (serverSettings) => lyricsCache.getCacheConfig(serverSettings);
+
+const findCachedLyricsForSignature = (signature, serverSettings) => {
+    const baseTrackKey = buildTrackKey(signature.trackName, signature.artistName, signature.albumName, signature.duration);
+    const offsets = [0, -1, 1, -2, 2];
+    for (const offset of offsets) {
+        const duration = signature.duration + offset;
+        const candidateKey = buildTrackKey(signature.trackName, signature.artistName, signature.albumName, duration);
+        const cacheLookup = lyricsCache.getCachedLyrics(candidateKey, serverSettings);
+        if (cacheLookup.status === "hit" && cacheLookup.payload) {
+            const payload = {
+                ...cacheLookup.payload,
+                trackKey: baseTrackKey,
+                signature: {
+                    ...cacheLookup.payload.signature,
+                    duration: signature.duration
+                }
+            };
+            return {
+                ...cacheLookup,
+                payload,
+                status: offset === 0 ? "hit" : "hit-duration-offset",
+                lookupTrackKey: candidateKey
+            };
+        }
+        if (cacheLookup.status === "error") {
+            return cacheLookup;
+        }
+    }
+    return lyricsCache.getCachedLyrics(baseTrackKey, serverSettings);
+};
+
+const getPrefetchMode = (serverSettings) => {
+    const mode = getCacheConfig(serverSettings).prefetch;
+    if (mode === PREFETCH_MODES.ALBUM || mode === PREFETCH_MODES.ARTIST || mode === PREFETCH_MODES.OFF) {
+        return mode;
+    }
+    return PREFETCH_MODES.OFF;
+};
+
 const getUserAgent = (serverSettings) => {
     const version = serverSettings?.version?.server || "unknown";
     return `WiiMNowPlaying/${version} (+https://github.com)`;
@@ -373,9 +413,15 @@ const getLyricsForMetadata = async (io, deviceInfo, serverSettings) => {
         return;
     }
 
-    const cached = cache.get(trackKey);
-    if (cached && cached.expiresAt > Date.now()) {
-        diagnostics.cache = "memory";
+    const cacheLookup = findCachedLyricsForSignature(signature, serverSettings);
+    diagnostics.cacheLookupMs = cacheLookup.durationMs;
+    diagnostics.cacheStatus = cacheLookup.status;
+    diagnostics.cacheSizeBytes = cacheLookup.cacheConfig?.enabled
+        ? lyricsCache.getCacheStats(cacheLookup.cacheConfig).totalSize
+        : 0;
+    diagnostics.cacheMaxBytes = cacheLookup.cacheConfig?.maxSizeBytes || 0;
+
+    if (cacheLookup.status === "hit" && cacheLookup.payload) {
         diagnostics.totalMs = Date.now() - diagnostics.requestedAt;
         setLyricsState(io, deviceInfo, {
             ...cached.payload,
@@ -429,9 +475,14 @@ const fetchLyricsForSignature = async (signature, trackKey, serverSettings, diag
         };
     };
 
-    const cached = cache.get(trackKey);
-    if (cached && cached.expiresAt > Date.now()) {
-        return withPrefetchMetadata(cached.payload);
+    const cacheLookup = findCachedLyricsForSignature(signature, serverSettings);
+    if (cacheLookup.status === "hit" && cacheLookup.payload) {
+        return withPrefetchMetadata(cacheLookup.payload);
+    }
+
+    const negative = negativeCache.get(trackKey);
+    if (negative && negative.expiresAt > Date.now()) {
+        return withPrefetchMetadata(negative.payload);
     }
 
     const running = inFlightRequests.get(trackKey);
@@ -455,11 +506,6 @@ const fetchLyricsForSignature = async (signature, trackKey, serverSettings, diag
                 instrumental: lyrics.instrumental,
                 syncedLyrics: lyrics.syncedLyrics
             };
-<<<<<<< HEAD
-            cache.set(trackKey, {
-                payload,
-                expiresAt: Date.now() + CACHE_TTL_MS
-=======
             setImmediate(async () => {
                 try {
                     const bestLyrics = await fetchBestLyricsBySignature(signature, serverSettings, null);
@@ -477,6 +523,8 @@ const fetchLyricsForSignature = async (signature, trackKey, serverSettings, diag
                     const storeResult = lyricsCache.storeLyrics(bestPayload, serverSettings);
                     if (storeResult.stored) {
                         console.log(`Lyrics cached (${storeResult.size} bytes)`, trackKey);
+                    } else if (storeResult.error) {
+                        console.log(`Lyrics cache store skipped (${storeResult.error})`, trackKey);
                     }
                 } catch (error) {
                     log("Lyrics cache write error:", error.message);
@@ -580,7 +628,7 @@ const storeCandidateInCache = (candidate, serverSettings) => {
         syncedLyrics: candidate.syncedLyrics
     };
     const stored = lyricsCache.storeLyrics(payload, serverSettings);
-    return { trackKey, stored: stored.stored };
+    return { trackKey, stored: stored.stored, error: stored.error };
 };
 
 const prefetchCandidates = async (candidates, serverSettings) => {
@@ -649,6 +697,9 @@ const schedulePrefetchForSignature = (io, signature, serverSettings, options = {
                 totalStored += 1;
             } else {
                 totalSkipped += 1;
+                if (result?.error) {
+                    console.log(`Lyrics prefetch cache skipped (${result.error})`, result.trackKey);
+                }
             }
         });
 
@@ -665,6 +716,9 @@ const schedulePrefetchForSignature = (io, signature, serverSettings, options = {
                     totalStored += 1;
                 } else {
                     totalSkipped += 1;
+                    if (result?.error) {
+                        console.log(`Lyrics prefetch cache skipped (${result.error})`, result.trackKey);
+                    }
                 }
             });
         }
@@ -696,7 +750,6 @@ const schedulePrefetchForSignature = (io, signature, serverSettings, options = {
     prefetchInFlight.set(prefetchKey, prefetchPromise);
 };
 
->>>>>>> d8c8019 (Fix lyrics prefetch queries and close cache on shutdown)
 const prefetchLyricsForMetadata = async (io, metadata, serverSettings, options = {}) => {
     const enabled = serverSettings?.features?.lyrics?.enabled;
     if (!enabled || !metadata || !metadata.trackMetaData) {
