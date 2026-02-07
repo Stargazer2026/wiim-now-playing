@@ -73,7 +73,13 @@ let serverSettings = { // Placeholder for current server settings
         "lyrics": {
             "enabled": false,
             "provider": "lrclib",
-            "offsetMs": 0
+            "offsetMs": 0,
+            "cache": {
+                "enabled": true,
+                "maxSizeMB": 50,
+                "prefetch": "album",
+                "maxPrefetchConcurrency": 4
+            }
         }
     },
     "server": null, // Placeholder for the express server (port) information

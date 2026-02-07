@@ -5,9 +5,9 @@
 
 const https = require("https");
 const log = require("debug")("lib:lyrics");
+const lyricsCache = require("./lyricsCache.js");
 
 const LRCLIB_BASE_URL = "https://lrclib.net";
-const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const NEGATIVE_CACHE_TTL_MS = 10 * 60 * 1000;
 const MATCH_SCORE_THRESHOLD = 70;
 const PREFETCH_BATCH_LIMIT = 20;
@@ -17,8 +17,9 @@ const PREFETCH_MODES = {
     ALBUM: "album"
 };
 
-const cache = new Map();
+const negativeCache = new Map();
 const inFlightRequests = new Map();
+const prefetchInFlight = new Map();
 
 const buildDiagnostics = (metadata, deviceInfo, serverSettings) => {
     const requestedAt = Date.now();
@@ -32,6 +33,10 @@ const buildDiagnostics = (metadata, deviceInfo, serverSettings) => {
         stateTimeStamp,
         stateAgeMs: stateTimeStamp ? requestedAt - stateTimeStamp : null,
         metadataPollIntervalMs: serverSettings?.timeouts?.metadata || null,
+        cacheLookupMs: null,
+        cacheStatus: null,
+        cacheSizeBytes: null,
+        cacheMaxBytes: null,
         requests: []
     };
 };
@@ -453,8 +458,11 @@ const getLyricsForMetadata = async (io, deviceInfo, serverSettings) => {
         diagnostics.totalMs = Date.now() - diagnostics.requestedAt;
         log(`Lyrics cache hit (${cacheLookup.durationMs}ms)`, trackKey);
         setLyricsState(io, deviceInfo, {
-            ...cached.payload,
+            ...cacheLookup.payload,
             diagnostics
+        });
+        schedulePrefetchForSignature(io, signature, serverSettings, {
+            reason: "cache-hit"
         });
         return;
     }
@@ -474,13 +482,15 @@ const getLyricsForMetadata = async (io, deviceInfo, serverSettings) => {
     };
 
     try {
-        diagnostics.cache = "miss";
         const payload = await fetchLyricsForSignature(signature, trackKey, serverSettings, diagnostics);
         diagnostics.totalMs = Date.now() - diagnostics.requestedAt;
         if (payload) {
             setLyricsState(io, deviceInfo, {
                 ...payload,
                 diagnostics: snapshotDiagnostics()
+            });
+            schedulePrefetchForSignature(io, signature, serverSettings, {
+                reason: "live-fetch"
             });
             return;
         }
@@ -571,7 +581,7 @@ const fetchLyricsForSignature = async (signature, trackKey, serverSettings, diag
             trackKey,
             signature
         };
-        cache.set(trackKey, {
+        negativeCache.set(trackKey, {
             payload,
             expiresAt: Date.now() + NEGATIVE_CACHE_TTL_MS
         });
@@ -823,8 +833,8 @@ const prefetchLyricsForMetadata = async (io, metadata, serverSettings, options =
     }
 
     const trackKey = buildTrackKey(signature.trackName, signature.artistName, signature.albumName, signature.duration);
-    const cached = cache.get(trackKey);
-    if (cached && cached.expiresAt > Date.now()) {
+    const cached = lyricsCache.getCachedLyrics(trackKey, serverSettings);
+    if (cached.status === "hit") {
         setLyricsPrefetchState(io, {
             status: "cached",
             trackKey,
@@ -846,6 +856,9 @@ const prefetchLyricsForMetadata = async (io, metadata, serverSettings, options =
                 source: "next-track-metadata",
                 startedAt
             }
+        });
+        schedulePrefetchForSignature(io, signature, serverSettings, {
+            reason: "next-track-metadata"
         });
         setLyricsPrefetchState(io, {
             status: "done",
