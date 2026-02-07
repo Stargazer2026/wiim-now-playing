@@ -42,6 +42,8 @@ WNP.d = {
     lyrics: null, // Current lyrics payload
     lyricsIndex: null, // Current lyrics line index
     lyricsLines: [], // Parsed lyrics lines
+    lyricsPending: false, // Track if lyrics are in pending state (before first line)
+    lyricsPauseThresholdMs: 5000, // Threshold to advance to next line during long gaps
     lyricsCookieApplied: false // Track if cookie setting has been applied
 };
 
@@ -660,6 +662,14 @@ WNP.setSocketDefinitions = function () {
     socket.on("lyrics", function (msg) {
         WNP.d.lyrics = msg;
         WNP.d.lyricsIndex = null;
+        WNP.d.lyricsPending = false;
+
+        console.log("WNP", "Lyrics update:", {
+            status: msg?.status,
+            provider: msg?.provider,
+            trackKey: msg?.trackKey,
+            hasSyncedLyrics: Boolean(msg && msg.syncedLyrics)
+        });
 
         if (!msg || msg.status !== "ok" || !msg.syncedLyrics) {
             WNP.clearLyrics();
@@ -668,6 +678,7 @@ WNP.setSocketDefinitions = function () {
 
         WNP.d.lyricsLines = WNP.parseSyncedLyrics(msg.syncedLyrics);
         if (!WNP.d.lyricsLines.length) {
+            console.log("WNP", "Lyrics update: no parsed lyrics lines.");
             WNP.clearLyrics();
             return;
         }
@@ -916,6 +927,7 @@ WNP.clearLyrics = function () {
     }
     WNP.d.lyricsLines = [];
     WNP.d.lyricsIndex = null;
+    WNP.d.lyricsPending = false;
 };
 
 /**
@@ -959,27 +971,74 @@ WNP.updateLyricsProgress = function (relTime, timeStampDiff) {
         }
     }
 
-    if (currentIndex === -1) {
+    const currentLineTimeMs = (currentIndex >= 0 && WNP.d.lyricsLines[currentIndex])
+        ? WNP.d.lyricsLines[currentIndex].timeMs
+        : null;
+    const nextLineTimeMs = (currentIndex >= 0 && WNP.d.lyricsLines[currentIndex + 1])
+        ? WNP.d.lyricsLines[currentIndex + 1].timeMs
+        : null;
+    const pauseThresholdMs = (typeof WNP.d.lyricsPauseThresholdMs === "number")
+        ? WNP.d.lyricsPauseThresholdMs
+        : 5000;
+    const gapToNextMs = (currentLineTimeMs !== null && nextLineTimeMs !== null)
+        ? nextLineTimeMs - currentLineTimeMs
+        : null;
+    const shouldSoftAdvance = (currentIndex >= 0 && gapToNextMs !== null)
+        ? (gapToNextMs > pauseThresholdMs && currentMs > (currentLineTimeMs + pauseThresholdMs))
+        : false;
+    const displayIndex = shouldSoftAdvance ? currentIndex + 1 : currentIndex;
+
+    if (displayIndex === -1) {
+        if (!WNP.d.lyricsPending) {
+            console.log("WNP", "Lyrics pending before first line.", {
+                currentMs: currentMs,
+                firstLineMs: WNP.d.lyricsLines[0]?.timeMs,
+                relTime: currentRelTime,
+                offsetMs: WNP.getLyricsOffsetMs(),
+                timeStampDiff: currentOffset,
+                trackKey: WNP.d.lyrics?.trackKey
+            });
+        }
+        WNP.d.lyricsPending = true;
         WNP.setLyricsPending(true);
         WNP.setLyricsLines(
+            "",
             WNP.d.lyricsLines[0] ? WNP.d.lyricsLines[0].text : "",
-            WNP.d.lyricsLines[1] ? WNP.d.lyricsLines[1].text : "",
-            WNP.d.lyricsLines[2] ? WNP.d.lyricsLines[2].text : ""
+            WNP.d.lyricsLines[1] ? WNP.d.lyricsLines[1].text : ""
         );
         WNP.d.lyricsIndex = -1;
         return;
     }
 
-    if (WNP.d.lyricsIndex === currentIndex) {
+    if (WNP.d.lyricsIndex === displayIndex && WNP.d.lyricsPending === shouldSoftAdvance) {
         return;
     }
 
-    WNP.setLyricsPending(false);
-    WNP.d.lyricsIndex = currentIndex;
-    var prevLine = currentIndex > 0 ? WNP.d.lyricsLines[currentIndex - 1].text : "";
-    var currentLine = WNP.d.lyricsLines[currentIndex].text;
-    var nextLine = WNP.d.lyricsLines[currentIndex + 1] ? WNP.d.lyricsLines[currentIndex + 1].text : "";
+    if (WNP.d.lyricsPending && !shouldSoftAdvance) {
+        console.log("WNP", "Lyrics started.", {
+            currentMs: currentMs,
+            currentIndex: displayIndex,
+            relTime: currentRelTime,
+            trackKey: WNP.d.lyrics?.trackKey
+        });
+    }
+    WNP.setLyricsPending(shouldSoftAdvance);
+    WNP.d.lyricsPending = shouldSoftAdvance;
+    WNP.d.lyricsIndex = displayIndex;
+    var prevLine = displayIndex > 0 ? WNP.d.lyricsLines[displayIndex - 1].text : "";
+    var currentLine = WNP.d.lyricsLines[displayIndex].text;
+    var nextLine = WNP.d.lyricsLines[displayIndex + 1] ? WNP.d.lyricsLines[displayIndex + 1].text : "";
+    if (shouldSoftAdvance) {
+        prevLine = "";
+    }
     WNP.setLyricsLines(prevLine, currentLine, nextLine);
+    console.log("WNP", "Lyrics line change.", {
+        currentIndex: displayIndex,
+        currentLine: currentLine,
+        softAdvance: shouldSoftAdvance,
+        gapToNextMs: gapToNextMs,
+        trackKey: WNP.d.lyrics?.trackKey
+    });
 };
 
 /**
