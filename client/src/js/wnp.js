@@ -1028,6 +1028,9 @@ WNP.updateLyricsProgress = function (relTime, timeStampDiff) {
     var prevLine = displayIndex > 0 ? WNP.d.lyricsLines[displayIndex - 1].text : "";
     var currentLine = WNP.d.lyricsLines[displayIndex].text;
     var nextLine = WNP.d.lyricsLines[displayIndex + 1] ? WNP.d.lyricsLines[displayIndex + 1].text : "";
+    if (shouldSoftAdvance) {
+        prevLine = "";
+    }
     WNP.setLyricsLines(prevLine, currentLine, nextLine);
     console.log("WNP", "Lyrics line change.", {
         currentIndex: displayIndex,
