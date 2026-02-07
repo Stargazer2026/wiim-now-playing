@@ -43,6 +43,7 @@ WNP.d = {
     lyricsIndex: null, // Current lyrics line index
     lyricsLines: [], // Parsed lyrics lines
     lyricsPending: false, // Track if lyrics are in pending state (before first line)
+    lyricsHoldMs: 1500, // How long to keep a line highlighted after it ends
     lyricsCookieApplied: false // Track if cookie setting has been applied
 };
 
@@ -970,7 +971,16 @@ WNP.updateLyricsProgress = function (relTime, timeStampDiff) {
         }
     }
 
-    if (currentIndex === -1) {
+    const nextLineTimeMs = (currentIndex >= 0 && WNP.d.lyricsLines[currentIndex + 1])
+        ? WNP.d.lyricsLines[currentIndex + 1].timeMs
+        : null;
+    const holdMs = (typeof WNP.d.lyricsHoldMs === "number") ? WNP.d.lyricsHoldMs : 1500;
+    const shouldSoftAdvance = (currentIndex >= 0 && nextLineTimeMs !== null)
+        ? currentMs > (nextLineTimeMs + holdMs)
+        : false;
+    const displayIndex = shouldSoftAdvance ? currentIndex + 1 : currentIndex;
+
+    if (displayIndex === -1) {
         if (!WNP.d.lyricsPending) {
             console.log("WNP", "Lyrics pending before first line.", {
                 currentMs: currentMs,
@@ -992,28 +1002,29 @@ WNP.updateLyricsProgress = function (relTime, timeStampDiff) {
         return;
     }
 
-    if (WNP.d.lyricsIndex === currentIndex) {
+    if (WNP.d.lyricsIndex === displayIndex && WNP.d.lyricsPending === shouldSoftAdvance) {
         return;
     }
 
-    if (WNP.d.lyricsPending) {
+    if (WNP.d.lyricsPending && !shouldSoftAdvance) {
         console.log("WNP", "Lyrics started.", {
             currentMs: currentMs,
-            currentIndex: currentIndex,
+            currentIndex: displayIndex,
             relTime: currentRelTime,
             trackKey: WNP.d.lyrics?.trackKey
         });
     }
-    WNP.setLyricsPending(false);
-    WNP.d.lyricsPending = false;
-    WNP.d.lyricsIndex = currentIndex;
-    var prevLine = currentIndex > 0 ? WNP.d.lyricsLines[currentIndex - 1].text : "";
-    var currentLine = WNP.d.lyricsLines[currentIndex].text;
-    var nextLine = WNP.d.lyricsLines[currentIndex + 1] ? WNP.d.lyricsLines[currentIndex + 1].text : "";
+    WNP.setLyricsPending(shouldSoftAdvance);
+    WNP.d.lyricsPending = shouldSoftAdvance;
+    WNP.d.lyricsIndex = displayIndex;
+    var prevLine = displayIndex > 0 ? WNP.d.lyricsLines[displayIndex - 1].text : "";
+    var currentLine = WNP.d.lyricsLines[displayIndex].text;
+    var nextLine = WNP.d.lyricsLines[displayIndex + 1] ? WNP.d.lyricsLines[displayIndex + 1].text : "";
     WNP.setLyricsLines(prevLine, currentLine, nextLine);
     console.log("WNP", "Lyrics line change.", {
-        currentIndex: currentIndex,
+        currentIndex: displayIndex,
         currentLine: currentLine,
+        softAdvance: shouldSoftAdvance,
         trackKey: WNP.d.lyrics?.trackKey
     });
 };
