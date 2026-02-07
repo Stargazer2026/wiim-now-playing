@@ -43,7 +43,7 @@ WNP.d = {
     lyricsIndex: null, // Current lyrics line index
     lyricsLines: [], // Parsed lyrics lines
     lyricsPending: false, // Track if lyrics are in pending state (before first line)
-    lyricsHoldMs: 1500, // How long to keep a line highlighted after it ends
+    lyricsPauseThresholdMs: 5000, // Threshold to advance to next line during long gaps
     lyricsCookieApplied: false // Track if cookie setting has been applied
 };
 
@@ -971,12 +971,20 @@ WNP.updateLyricsProgress = function (relTime, timeStampDiff) {
         }
     }
 
+    const currentLineTimeMs = (currentIndex >= 0 && WNP.d.lyricsLines[currentIndex])
+        ? WNP.d.lyricsLines[currentIndex].timeMs
+        : null;
     const nextLineTimeMs = (currentIndex >= 0 && WNP.d.lyricsLines[currentIndex + 1])
         ? WNP.d.lyricsLines[currentIndex + 1].timeMs
         : null;
-    const holdMs = (typeof WNP.d.lyricsHoldMs === "number") ? WNP.d.lyricsHoldMs : 1500;
-    const shouldSoftAdvance = (currentIndex >= 0 && nextLineTimeMs !== null)
-        ? currentMs > (nextLineTimeMs + holdMs)
+    const pauseThresholdMs = (typeof WNP.d.lyricsPauseThresholdMs === "number")
+        ? WNP.d.lyricsPauseThresholdMs
+        : 5000;
+    const gapToNextMs = (currentLineTimeMs !== null && nextLineTimeMs !== null)
+        ? nextLineTimeMs - currentLineTimeMs
+        : null;
+    const shouldSoftAdvance = (currentIndex >= 0 && gapToNextMs !== null)
+        ? (gapToNextMs > pauseThresholdMs && currentMs > (currentLineTimeMs + pauseThresholdMs))
         : false;
     const displayIndex = shouldSoftAdvance ? currentIndex + 1 : currentIndex;
 
@@ -1025,6 +1033,7 @@ WNP.updateLyricsProgress = function (relTime, timeStampDiff) {
         currentIndex: displayIndex,
         currentLine: currentLine,
         softAdvance: shouldSoftAdvance,
+        gapToNextMs: gapToNextMs,
         trackKey: WNP.d.lyrics?.trackKey
     });
 };
