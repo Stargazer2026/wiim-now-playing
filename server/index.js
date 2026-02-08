@@ -99,11 +99,33 @@ let serverSettings = { // Placeholder for current server settings
 let pollState = null; // For the renderer state
 let pollMetadata = null; // For the renderer metadata
 
+const ensurePolling = () => {
+    if (pollState || pollMetadata) {
+        return;
+    }
+    pollMetadata = upnp.startMetadata(io, deviceInfo, serverSettings);
+    pollState = upnp.startState(io, deviceInfo, serverSettings);
+};
+
+const stopPollingIfIdle = () => {
+    const kioskEnabled = Boolean(serverSettings.kiosk && serverSettings.kiosk.host);
+    if (io.sockets.sockets.size === 0 && !kioskEnabled) {
+        log("No sockets are connected!");
+        upnp.stopPolling(pollState, "pollState");
+        upnp.stopPolling(pollMetadata, "pollMetadata");
+        pollState = null;
+        pollMetadata = null;
+    }
+};
+
 // ===========================================================================
 // Get the server settings from local file storage, if any.
 lib.getSettings(serverSettings);
 lyricsCache.startCacheMaintenance(serverSettings);
 kiosk.applySettings(serverSettings);
+if (serverSettings.kiosk && serverSettings.kiosk.host) {
+    ensurePolling();
+}
 
 // ===========================================================================
 // Initial SSDP scan for devices.
@@ -215,8 +237,7 @@ io.on("connection", (socket) => {
     log("No. of sockets:", io.sockets.sockets.size);
     if (io.sockets.sockets.size === 1) {
         // Start polling the selected device
-        pollMetadata = upnp.startMetadata(io, deviceInfo, serverSettings);
-        pollState = upnp.startState(io, deviceInfo, serverSettings);
+        ensurePolling();
     }
     else if (io.sockets.sockets.size >= 1) {
         // If new client, send current state and metadata 'immediately'
@@ -241,12 +262,7 @@ io.on("connection", (socket) => {
         // On disconnection we check the amount of connected clients.
         // If there is none, the streaming and polling are stopped.
         log("No. of sockets:", io.sockets.sockets.size);
-        if (io.sockets.sockets.size === 0) {
-            log("No sockets are connected!");
-            // Stop polling the selected device
-            upnp.stopPolling(pollState, "pollState");
-            upnp.stopPolling(pollMetadata, "pollMetadata");
-        }
+        stopPollingIfIdle();
 
     });
 
@@ -368,6 +384,11 @@ io.on("connection", (socket) => {
             lib.saveSettings(serverSettings);
             sockets.getServerSettings(io, serverSettings);
             kiosk.applySettings(serverSettings);
+            if (serverSettings.kiosk.host) {
+                ensurePolling();
+            } else {
+                stopPollingIfIdle();
+            }
         }
     });
 
