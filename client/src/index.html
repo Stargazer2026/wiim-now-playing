@@ -223,6 +223,22 @@
                                 Only synced lyrics are displayed. If none are found, lyrics stay hidden.
                             </div>
                         </div>
+                        <div class="mb-3">
+                            <label class="form-label">Fully Kiosk Browser:</label>
+                            <div class="mt-2">
+                                <label class="form-label" for="kioskHost">Tablet IP/Hostname</label>
+                                <input class="form-control" type="text" id="kioskHost" placeholder="tablet.local or 192.168.1.50">
+                            </div>
+                            <div class="mt-2">
+                                <label class="form-label" for="kioskPassword">Password</label>
+                                <input class="form-control" type="password" id="kioskPassword" autocomplete="new-password">
+                            </div>
+                            <div class="mt-2">
+                                <label class="form-label" for="kioskDelaySec">Screen-off delay (seconds)</label>
+                                <input class="form-control" type="number" id="kioskDelaySec" min="0" step="1">
+                                <div class="form-text">Keeps the display on after pause/stop before switching it off.</div>
+                            </div>
+                        </div>
 
                         <!-- Server information -->
                         <div class="mb-3">

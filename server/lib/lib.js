@@ -107,6 +107,12 @@ const getSettings = (serverSettings) => {
                 }
             }
         }
+        if (settings.kiosk) {
+            serverSettings.kiosk = {
+                ...serverSettings.kiosk,
+                ...settings.kiosk
+            };
+        }
     }
     catch { // Not found, create a settings file
         log("fs", "No settings file found! Trying to create one...");
@@ -126,7 +132,8 @@ const saveSettings = (serverSettings) => {
 
     const settingsToStore = {
         "selectedDevice": serverSettings.selectedDevice,
-        "features": serverSettings.features
+        "features": serverSettings.features,
+        "kiosk": serverSettings.kiosk
     };
     log("fs", "Settings to store", settingsToStore);
 
