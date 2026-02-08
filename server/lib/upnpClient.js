@@ -18,6 +18,7 @@ const UPnP = require("upnp-device-client");
 const xml2js = require("xml2js");
 const lib = require("./lib.js"); // Generic functionality
 const lyrics = require("./lyrics.js"); // Lyrics functionality
+const kiosk = require("./kiosk.js");
 const log = require("debug")("lib:upnpClient");
 
 /**
@@ -135,6 +136,7 @@ const updateDeviceState = (io, deviceInfo, serverSettings) => {
                             stateTimeStamp: lib.getTimeStamp(),
                         };
                         io.emit("state", deviceInfo.state);
+                        kiosk.handleTransportState(result.CurrentTransportState, previousState, serverSettings);
                         if (result.CurrentTransportState === "TRANSITIONING" && previousState !== "TRANSITIONING") {
                             module.exports.updateDeviceMetadata(io, deviceInfo, serverSettings);
                         }

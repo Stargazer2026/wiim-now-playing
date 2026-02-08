@@ -32,6 +32,7 @@ const shell = require("./lib/shell.js"); // Shell command functionality
 const lib = require("./lib/lib.js"); // Generic functionality
 const lyrics = require("./lib/lyrics.js"); // Lyrics functionality
 const lyricsCache = require("./lib/lyricsCache.js");
+const kiosk = require("./lib/kiosk.js");
 const log = require("debug")("index"); // See README.md on debugging
 
 // For versionioning purposes
@@ -82,6 +83,11 @@ let serverSettings = { // Placeholder for current server settings
             }
         }
     },
+    "kiosk": {
+        "host": "",
+        "password": "",
+        "screenOffDelaySec": 300
+    },
     "server": null, // Placeholder for the express server (port) information
     "version": { // Version information for the server and client
         "server": packageJsonServer.version,
@@ -97,6 +103,7 @@ let pollMetadata = null; // For the renderer metadata
 // Get the server settings from local file storage, if any.
 lib.getSettings(serverSettings);
 lyricsCache.startCacheMaintenance(serverSettings);
+kiosk.applySettings(serverSettings);
 
 // ===========================================================================
 // Initial SSDP scan for devices.
@@ -347,6 +354,20 @@ io.on("connection", (socket) => {
                     log("Lyrics update error", error);
                 });
             }
+        }
+        if (msg && msg.kiosk) {
+            if (typeof msg.kiosk.host === "string") {
+                serverSettings.kiosk.host = msg.kiosk.host.trim();
+            }
+            if (typeof msg.kiosk.password === "string") {
+                serverSettings.kiosk.password = msg.kiosk.password;
+            }
+            if (typeof msg.kiosk.screenOffDelaySec === "number") {
+                serverSettings.kiosk.screenOffDelaySec = Math.max(0, Math.round(msg.kiosk.screenOffDelaySec));
+            }
+            lib.saveSettings(serverSettings);
+            sockets.getServerSettings(io, serverSettings);
+            kiosk.applySettings(serverSettings);
         }
     });
 

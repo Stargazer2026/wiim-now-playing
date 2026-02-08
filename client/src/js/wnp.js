@@ -26,7 +26,10 @@ WNP.s = {
         "lyricsOffsetMs",
         "chkLyricsCacheEnabled",
         "lyricsCacheSizeMB",
-        "lyricsPrefetchMode"
+        "lyricsPrefetchMode",
+        "kioskHost",
+        "kioskPassword",
+        "kioskDelaySec"
     ],
 };
 
@@ -278,6 +281,40 @@ WNP.setUIListeners = function () {
         });
     }
 
+    if (this.r.kioskHost) {
+        this.r.kioskHost.addEventListener("change", function () {
+            socket.emit("server-settings-update", {
+                kiosk: {
+                    host: this.value
+                }
+            });
+        });
+    }
+
+    if (this.r.kioskPassword) {
+        this.r.kioskPassword.addEventListener("change", function () {
+            socket.emit("server-settings-update", {
+                kiosk: {
+                    password: this.value
+                }
+            });
+        });
+    }
+
+    if (this.r.kioskDelaySec) {
+        this.r.kioskDelaySec.addEventListener("change", function () {
+            var delayValue = parseInt(this.value, 10);
+            if (isNaN(delayValue) || delayValue < 0) {
+                delayValue = 0;
+            }
+            socket.emit("server-settings-update", {
+                kiosk: {
+                    screenOffDelaySec: delayValue
+                }
+            });
+        });
+    }
+
 };
 
 /**
@@ -380,6 +417,19 @@ WNP.setSocketDefinitions = function () {
                 WNP.setCookie("wnpLyricsEnabled", WNP.r.chkLyricsEnabled.checked, 180);
             }
             WNP.d.lyricsCookieApplied = true;
+        }
+
+        if (WNP.r.kioskHost) {
+            var kioskHost = (msg && msg.kiosk && msg.kiosk.host) ? msg.kiosk.host : "";
+            WNP.r.kioskHost.value = kioskHost;
+        }
+        if (WNP.r.kioskPassword) {
+            var kioskPassword = (msg && msg.kiosk && msg.kiosk.password) ? msg.kiosk.password : "";
+            WNP.r.kioskPassword.value = kioskPassword;
+        }
+        if (WNP.r.kioskDelaySec) {
+            var kioskDelaySec = (msg && msg.kiosk && typeof msg.kiosk.screenOffDelaySec === "number") ? msg.kiosk.screenOffDelaySec : 300;
+            WNP.r.kioskDelaySec.value = kioskDelaySec;
         }
 
     });
