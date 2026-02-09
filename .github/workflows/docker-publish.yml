@@ -19,6 +19,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set short commit sha
+        run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
+
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -37,6 +40,7 @@ jobs:
           push: true
           tags: |
             stargazer2026/wiim-now-playing:latest
+            stargazer2026/wiim-now-playing:sha-${{ env.SHORT_SHA }}
 
       - name: Build and push (dev branch)
         if: github.ref == 'refs/heads/dev'
@@ -47,6 +51,7 @@ jobs:
           push: true
           tags: |
             stargazer2026/wiim-now-playing-dev:latest
+            stargazer2026/wiim-now-playing-dev:sha-${{ env.SHORT_SHA }}
 
       - name: Build and push (version tag)
         if: startsWith(github.ref, 'refs/tags/')
@@ -58,3 +63,4 @@ jobs:
           tags: |
             stargazer2026/wiim-now-playing:${{ github.ref_name }}
             stargazer2026/wiim-now-playing:latest
+            stargazer2026/wiim-now-playing:sha-${{ env.SHORT_SHA }}
