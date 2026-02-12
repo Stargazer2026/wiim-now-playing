@@ -410,7 +410,12 @@
     // Responsive layout changes
     @media (orientation: landscape) {
         .wnpMediaInfo {
-            text-align: center;
+            text-align: left;
+
+            #mediaSource {
+                text-align: left;
+            }
+
             #mediaSource,
             #mediaTitle,
             #mediaArtist,
@@ -424,9 +429,12 @@
                 display: none;
             }
 
-            .wnpLyrics,
-            .lyrics-line {
+            .wnpLyrics {
                 text-align: center;
+            }
+
+            .lyrics-line {
+                text-align: left;
             }
         }
     }
