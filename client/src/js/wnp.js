@@ -616,14 +616,15 @@ WNP.setSocketDefinitions = function () {
                 WNP.r.mediaArtist.innerText
             );
         }
-        if (WNP.r.mediaAlbumCompact && WNP.r.mediaAlbumQuality) {
-            WNP.r.mediaAlbumCompact.innerText = WNP.r.mediaAlbum.innerText;
-            WNP.r.mediaAlbumCompact.style.display = WNP.r.mediaAlbum.innerText ? "" : "none";
-            WNP.r.mediaAlbumQuality.style.display = WNP.r.mediaAlbum.innerText ? "" : "none";
-        }
-        if (WNP.r.mediaQualityCompact) {
-            WNP.r.mediaQualityCompact.innerText = qualiIdent || "";
-            WNP.r.mediaQualityCompact.style.display = qualiIdent ? "" : "none";
+        if (WNP.r.mediaAlbumCompact && WNP.r.mediaQualityCompact && WNP.r.mediaAlbumQuality) {
+            WNP.setCompactLine(
+                WNP.r.mediaAlbumQuality,
+                WNP.r.mediaAlbumCompact,
+                WNP.r.mediaQualityCompact,
+                null,
+                WNP.r.mediaAlbum.innerText,
+                qualiIdent
+            );
         }
         if (WNP.r.mediaSourceCompact) {
             if (sourceIdent !== "") {
@@ -639,9 +640,8 @@ WNP.setSocketDefinitions = function () {
             WNP.r.mediaSourceCompact.style.display = sourceAlt.trim() ? "inline-flex" : "none";
         }
         if (WNP.r.mediaCompactStatus) {
-            var hasCompactQuality = Boolean(WNP.r.mediaQualityCompact && WNP.r.mediaQualityCompact.style.display !== "none");
             var hasCompactSource = Boolean(WNP.r.mediaSourceCompact && WNP.r.mediaSourceCompact.style.display !== "none");
-            WNP.r.mediaCompactStatus.style.display = (hasCompactQuality || hasCompactSource) ? "" : "none";
+            WNP.r.mediaCompactStatus.style.display = hasCompactSource ? "" : "none";
         }
 
         // Pre-process Album Art uri, if any is available from the metadata.
