@@ -9,8 +9,8 @@ const zlib = require("zlib");
 const { DatabaseSync } = require("node:sqlite");
 const log = require("debug")("lib:lyrics-cache");
 
-const DEFAULT_CACHE_PATH_DIR = process.env.LYRICS_CACHE_PATH || "/var/lib/wiim-now-playing/";
-const DEFAULT_DB_FILENAME = process.env.LYRICS_CACHE_DB || "lyrics-cache.sqlite";
+const DEFAULT_CACHE_PATH_DIR = process.env.WNP_LYRICS_CACHE_PATH || "/var/lib/wiim-now-playing/";
+const DEFAULT_DB_FILENAME = process.env.WNP_LYRICS_CACHE_DB || "lyrics-cache.sqlite";
 const DEFAULT_CACHE_PATH = path.join(DEFAULT_CACHE_PATH_DIR, DEFAULT_DB_FILENAME);
 
 const DEFAULT_CHECKPOINT_INTERVAL_MS = 5 * 60 * 1000;
