@@ -17,7 +17,41 @@ const UPnP = require("upnp-device-client");
 // Other modules
 const xml2js = require("xml2js");
 const lib = require("./lib.js"); // Generic functionality
+const lyrics = require("./lyrics.js"); // Lyrics functionality
 const log = require("debug")("lib:upnpClient");
+
+const prefetchNextTracks = (result, serverSettings) => {
+    if (!result || !result.NextTrackMetaData) {
+        return;
+    }
+    xml2js.parseString(
+        result.NextTrackMetaData,
+        { explicitArray: false, ignoreAttrs: false },
+        (err, nextMetadataJson) => {
+            if (err) {
+                log("updateDeviceMetadata()", "NextTrackMetaData error", err);
+                return;
+            }
+            const items = nextMetadataJson && nextMetadataJson["DIDL-Lite"] && nextMetadataJson["DIDL-Lite"]["item"];
+            if (!items) {
+                return;
+            }
+            const itemList = Array.isArray(items) ? items : [items];
+            itemList.slice(0, 5).forEach((item) => {
+                if (!item) {
+                    return;
+                }
+                const res = item.res && item.res.$ ? item.res.$ : null;
+                const nextMetadata = {
+                    trackMetaData: item,
+                    TrackDuration: (res && res.duration) ? res.duration : (result.NextTrackDuration || null),
+                    TrackSource: result.NextTrackSource || result.TrackSource || ""
+                };
+                lyrics.prefetchLyricsForMetadata(nextMetadata, serverSettings);
+            });
+        }
+    );
+};
 
 /**
  * This function creates the UPnP Device Client.
@@ -123,6 +157,7 @@ const updateDeviceState = (io, deviceInfo, serverSettings) => {
                     }
                     else {
                         log("updateDeviceState()", "GetTransportInfo:", result.CurrentTransportState);
+                        const previousState = deviceInfo.state ? deviceInfo.state.CurrentTransportState : null;
                         deviceInfo.state = {
                             ...result,
                             RelTime: (deviceInfo.metadata && deviceInfo.metadata.RelTime) ? deviceInfo.metadata.RelTime : null,
@@ -133,6 +168,9 @@ const updateDeviceState = (io, deviceInfo, serverSettings) => {
                             stateTimeStamp: lib.getTimeStamp(),
                         };
                         io.emit("state", deviceInfo.state);
+                        if (result.CurrentTransportState === "TRANSITIONING" && previousState !== "TRANSITIONING") {
+                            module.exports.updateDeviceMetadata(io, deviceInfo, serverSettings);
+                        }
                     }
                 }
             );
@@ -195,6 +233,10 @@ const updateDeviceMetadata = (io, deviceInfo, serverSettings) => {
                                             metadataTimeStamp: lib.getTimeStamp()
                                         };;
                                         io.emit("metadata", deviceInfo.metadata);
+                                        lyrics.getLyricsForMetadata(io, deviceInfo, serverSettings).catch((error) => {
+                                            log("Lyrics update error", error);
+                                        });
+                                        prefetchNextTracks(result, serverSettings);
                                     }
                                 }
                             );
@@ -205,6 +247,10 @@ const updateDeviceMetadata = (io, deviceInfo, serverSettings) => {
                                 metadataTimeStamp: lib.getTimeStamp()
                             };
                             io.emit("metadata", deviceInfo.metadata);
+                            lyrics.getLyricsForMetadata(io, deviceInfo, serverSettings).catch((error) => {
+                                log("Lyrics update error", error);
+                            });
+                            prefetchNextTracks(result, serverSettings);
                         }
                     }
                 }
@@ -238,6 +284,10 @@ const updateDeviceMetadata = (io, deviceInfo, serverSettings) => {
                                             metadataTimeStamp: lib.getTimeStamp()
                                         };
                                         io.emit("metadata", deviceInfo.metadata);
+                                        lyrics.getLyricsForMetadata(io, deviceInfo, serverSettings).catch((error) => {
+                                            log("Lyrics update error", error);
+                                        });
+                                        prefetchNextTracks(result, serverSettings);
                                     }
                                 }
                             );
@@ -248,6 +298,10 @@ const updateDeviceMetadata = (io, deviceInfo, serverSettings) => {
                                 metadataTimeStamp: lib.getTimeStamp()
                             };
                             io.emit("metadata", deviceInfo.metadata);
+                            lyrics.getLyricsForMetadata(io, deviceInfo, serverSettings).catch((error) => {
+                                log("Lyrics update error", error);
+                            });
+                            prefetchNextTracks(result, serverSettings);
                         }
                     }
                 }
