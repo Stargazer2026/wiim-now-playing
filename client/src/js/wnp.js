@@ -11,7 +11,7 @@ WNP.s = {
     locPort: (location.port && location.port != "80" && location.port != "1234") ? location.port : "80",
     rndAlbumArtUri: "./img/fake-album-1.jpg",
     // Device selection
-    aDeviceUI: ["btnPrev", "btnPlay", "btnNext", "btnRefresh", "selDeviceChoices", "devName", "devNameHolder", "mediaTitle", "mediaSubTitle", "mediaArtist", "mediaAlbum", "mediaBitRate", "mediaBitDepth", "mediaSampleRate", "mediaQualityIdent", "devVol", "btnRepeat", "btnShuffle", "progressPlayed", "progressLeft", "progressPercent", "mediaSource", "albumArt", "bgAlbumArtBlur", "btnDevSelect", "oDeviceList", "btnDevPreset", "oPresetList", "btnDevVolume", "rVolume", "lyricsContainer", "lyricsPrev", "lyricsCurrent", "lyricsNext",  "mediaTitleArtist", "mediaTitleCompact", "mediaArtistCompact", "mediaAlbumQuality", "mediaAlbumCompact", "mediaQualityCompact"],
+    aDeviceUI: ["btnPrev", "btnPlay", "btnNext", "btnRefresh", "selDeviceChoices", "devName", "devNameHolder", "mediaTitle", "mediaSubTitle", "mediaArtist", "mediaAlbum", "mediaBitRate", "mediaBitDepth", "mediaSampleRate", "mediaQualityIdent", "devVol", "btnRepeat", "btnShuffle", "progressPlayed", "progressLeft", "progressPercent", "mediaSource", "albumArt", "bgAlbumArtBlur", "btnDevSelect", "oDeviceList", "btnDevPreset", "oPresetList", "btnDevVolume", "rVolume", "lyricsContainer", "lyricsPrev", "lyricsCurrent", "lyricsNext",  "mediaTitleArtist", "mediaTitleCompact", "mediaArtistCompact", "mediaSourceQuality", "mediaSourceCompact", "mediaQualityCompact"],
     // Server actions to be used in the app
     aServerUI: [
         "btnReboot",
@@ -615,15 +615,15 @@ WNP.setSocketDefinitions = function () {
                 WNP.r.mediaArtist.innerText
             );
         }
-        if (WNP.r.mediaAlbumCompact && WNP.r.mediaQualityCompact && WNP.r.mediaAlbumQuality) {
+        if (WNP.r.mediaSourceCompact && WNP.r.mediaQualityCompact && WNP.r.mediaSourceQuality) {
             var compactQuality = qualiIdent;
             WNP.setCompactLine(
-                WNP.r.mediaAlbumQuality,
+                WNP.r.mediaSourceQuality,
+                WNP.r.mediaSourceCompact,
                 WNP.r.mediaQualityCompact,
-                WNP.r.mediaAlbumCompact,
                 null,
-                compactQuality,
-                WNP.r.mediaAlbum.innerText
+                WNP.r.mediaSource ? WNP.r.mediaSource.innerHTML : "",
+                compactQuality
             );
         }
 
@@ -1050,13 +1050,24 @@ WNP.setCompactLine = function (container, leftEl, rightEl, sepEl, leftValue, rig
     if (!container || !leftEl || !rightEl) {
         return;
     }
-    leftEl.innerText = leftValue || "";
+
+    var hasLeft = false;
+    if (typeof leftValue === "string" && leftValue.indexOf("<") > -1) {
+        leftEl.innerHTML = leftValue || "";
+        hasLeft = leftEl.textContent.trim() !== "" || leftEl.querySelector("img") !== null;
+    }
+    else {
+        leftEl.innerText = leftValue || "";
+        hasLeft = Boolean(leftValue);
+    }
+
     rightEl.innerText = rightValue || "";
-    var hasLeft = Boolean(leftValue);
     var hasRight = Boolean(rightValue);
+
     if (sepEl) {
         sepEl.style.display = (hasLeft && hasRight) ? "" : "none";
     }
+    leftEl.style.display = hasLeft ? "" : "none";
     rightEl.style.display = hasRight ? "" : "none";
     container.style.display = (hasLeft || hasRight) ? "" : "none";
 };
