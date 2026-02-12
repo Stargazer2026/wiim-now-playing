@@ -10,10 +10,18 @@
 // Other modules
 const os = require("os");
 const fs = require("fs");
+const path = require("path");
 const log = require("debug")("lib:lib");
 
 // Module constants
-const settingsFile = __dirname + "/../settings.json"; // Make absolute path to server folder
+const settingsFile = path.resolve(process.env.WNP_SETTINGS_PATH || "..", "./settings.json");
+
+const ensureSettingsDirectory = () => {
+    const settingsDir = path.dirname(settingsFile);
+    if (!fs.existsSync(settingsDir)) {
+        fs.mkdirSync(settingsDir, { recursive: true });
+    }
+};
 
 /**
  * This function provides the current date and time in UTC format.
@@ -129,6 +137,7 @@ const getSettings = (serverSettings) => {
  */
 const saveSettings = (serverSettings) => {
     log("fs", "Saving settings to:", settingsFile);
+    ensureSettingsDirectory();
 
     const settingsToStore = {
         "selectedDevice": serverSettings.selectedDevice,
