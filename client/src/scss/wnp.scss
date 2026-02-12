@@ -200,9 +200,14 @@
             font-size: calc(1.325rem + .9vw);
         }
 
-        #mediaAlbumCompact,
-        #mediaQualityCompact {
+        #mediaAlbumCompact {
             font-size: calc(.875rem + .3vw);
+        }
+
+        #mediaQualityCompact,
+        #mediaSourceCompact {
+            font-size: calc(.82rem + .24vw);
+            line-height: 1.1;
         }
 
         #mediaSourceCompact {
