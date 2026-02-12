@@ -596,8 +596,9 @@ WNP.setSocketDefinitions = function () {
         var songQuality = (msg.trackMetaData && msg.trackMetaData["song:quality"]) ? msg.trackMetaData["song:quality"] : "";
         var songActualQuality = (msg.trackMetaData && msg.trackMetaData["song:actualQuality"]) ? msg.trackMetaData["song:actualQuality"] : "";
         var qualiIdent = WNP.getQualityIdent(songQuality, songActualQuality, songBitrate, songBitDepth, songSampleRate);
-        if (qualiIdent !== "") {
-            WNP.r.mediaQualityIdent.innerText = qualiIdent;
+        var qualiIdentLower = (qualiIdent || "").toLowerCase();
+        if (qualiIdentLower !== "") {
+            WNP.r.mediaQualityIdent.innerText = qualiIdentLower;
             WNP.r.mediaQualityIdent.title = "Quality: " + songQuality + ", " + songActualQuality;
         }
         else {
@@ -619,7 +620,7 @@ WNP.setSocketDefinitions = function () {
         }
         if (WNP.r.mediaAlbumCompact && WNP.r.mediaQualityCompact && WNP.r.mediaSourceCompact && WNP.r.mediaAlbumQuality) {
             var compactAlbum = WNP.r.mediaAlbum.innerText;
-            var compactQuality = qualiIdent || "";
+            var compactQuality = qualiIdentLower || "";
             var compactSource = compactSourceText || "";
             WNP.r.mediaAlbumCompact.innerText = compactAlbum;
             WNP.r.mediaAlbumCompact.style.display = compactAlbum ? "" : "none";
