@@ -242,7 +242,12 @@
             .lyrics-current {
                 font-weight: 400;
                 opacity: 0.65;
-                font-size: calc(.85rem + .25vw);
+                font-size: calc(1.3rem + .6vw);
+            }
+
+            .lyrics-next {
+                font-weight: 400;
+                opacity: 0.65;
             }
         }
 
