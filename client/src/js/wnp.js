@@ -281,40 +281,6 @@ WNP.setUIListeners = function () {
         });
     }
 
-    if (this.r.kioskHost) {
-        this.r.kioskHost.addEventListener("change", function () {
-            socket.emit("server-settings-update", {
-                kiosk: {
-                    host: this.value
-                }
-            });
-        });
-    }
-
-    if (this.r.kioskPassword) {
-        this.r.kioskPassword.addEventListener("change", function () {
-            socket.emit("server-settings-update", {
-                kiosk: {
-                    password: this.value
-                }
-            });
-        });
-    }
-
-    if (this.r.kioskDelaySec) {
-        this.r.kioskDelaySec.addEventListener("change", function () {
-            var delayValue = parseInt(this.value, 10);
-            if (isNaN(delayValue) || delayValue < 0) {
-                delayValue = 0;
-            }
-            socket.emit("server-settings-update", {
-                kiosk: {
-                    screenOffDelaySec: delayValue
-                }
-            });
-        });
-    }
-
 };
 
 /**
