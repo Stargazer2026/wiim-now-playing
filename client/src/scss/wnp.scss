@@ -110,6 +110,7 @@
     .wnpMediaInfo {
 
         text-shadow: 3px 3px 8px rgba(0, 0, 0, .75);
+        text-align: left;
 
         // Media Source Ident
         #mediaSource {
@@ -150,6 +151,68 @@
             font-size: calc(.875rem + .3vw);
         }
 
+        #mediaTitle,
+        #mediaArtist,
+        #mediaSubTitle,
+        #mediaQuality,
+        div:has(>#mediaAlbum) {
+            display: none;
+        }
+
+        .media-compact-block {
+            padding: 8px 12px;
+            margin-bottom: 8px;
+        }
+
+        .media-compact-line {
+            display: flex;
+            justify-content: flex-start;
+            align-items: baseline;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .media-compact-line--split {
+            justify-content: space-between;
+            width: 100%;
+            gap: 12px;
+        }
+
+        .media-compact-title {
+            flex: 1 1 auto;
+        }
+
+        .media-compact-artist {
+            flex: 0 0 auto;
+            text-align: right;
+        }
+
+        .media-compact-sep {
+            margin: 0 2px;
+        }
+
+        #mediaTitleCompact {
+            font-size: calc(1.325rem + .9vw);
+        }
+
+        #mediaArtistCompact {
+            font-size: calc(1.325rem + .9vw);
+        }
+
+        #mediaAlbumCompact,
+        #mediaQualityCompact {
+            font-size: calc(.875rem + .3vw);
+        }
+
+        #mediaAlbumCompact {
+            font-size: calc(.875rem + .3vw + 0.25rem) !important;
+        }
+
+        #mediaAlbumCompact {
+            margin-left: auto;
+            text-align: right;
+        }
+
         .wnpLyrics {
             display: none;
             margin-top: 14px;
@@ -158,6 +221,7 @@
             background: rgba(0, 0, 0, 0.35);
             backdrop-filter: blur(4px);
             min-height: 84px;
+            text-align: left;
         }
 
         .wnpLyrics.is-visible {
@@ -173,7 +237,7 @@
         }
 
         .lyrics-line {
-            text-align: center;
+            text-align: left;
             opacity: 0.65;
             line-height: 1.35;
             min-height: 1.35em;
@@ -186,17 +250,18 @@
         .lyrics-current {
             font-weight: 600;
             opacity: 1;
-            font-size: calc(.95rem + .35vw);
+            font-size: calc(1.325rem + .9vw);
         }
 
         .lyrics-prev,
         .lyrics-next {
-            font-size: calc(.85rem + .25vw);
+            font-size: calc(1.3rem + .6vw);
         }
 
         // Media Album and Quality Ident
         #mediaAlbumIdent,
-        #mediaQualityIdent {
+        #mediaQualityIdent,
+        .media-compact-badge {
 
             &.badge-outlined {
                 border: 1px solid rgba(118, 125, 123, 1);
@@ -204,6 +269,12 @@
                 margin-right: 10px;
             }
 
+        }
+
+        .media-compact-badge.badge-outlined {
+            margin-right: 0;
+            font-size: 0.75em;
+            padding: 0.2em 0.5em;
         }
 
     }
@@ -322,6 +393,27 @@
 
     // ===============================
     // Responsive layout changes
+    @media (orientation: landscape) {
+        .wnpMediaInfo {
+            text-align: center;
+            #mediaTitle,
+            #mediaArtist,
+            #mediaSubTitle,
+            #mediaQuality,
+            div:has(>#mediaAlbum) {
+                display: block;
+            }
+
+            .media-compact-line {
+                display: none;
+            }
+
+            .wnpLyrics,
+            .lyrics-line {
+                text-align: center;
+            }
+        }
+    }
 
     // Small devices (landscape phones, 576px and up)
     @media (min-width: 576px) and (orientation: landscape) {
