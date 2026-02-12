@@ -115,6 +115,7 @@
         // Media Source Ident
         #mediaSource {
             text-align: center;
+            display: none;
 
             img {
                 max-height: 24px;
@@ -178,24 +179,40 @@
             gap: 12px;
         }
 
-        .media-compact-line--stacked {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 2px;
+        .media-compact-line--title {
+            width: 100%;
+            justify-content: flex-start;
+        }
+
+        .media-compact-line--right {
+            width: 100%;
+            justify-content: flex-end;
         }
 
         .media-compact-line--source-quality {
+            width: 100%;
             align-items: center;
+            justify-content: space-between;
             gap: 8px;
             min-height: 1.6em;
+            margin-top: 4px;
         }
 
         .media-compact-title,
-        .media-compact-artist {
+        .media-compact-artist,
+        #mediaAlbumCompact {
             display: block;
             width: 100%;
-            text-align: left;
             line-height: 1.2;
+        }
+
+        .media-compact-title {
+            text-align: left;
+        }
+
+        .media-compact-artist,
+        #mediaAlbumCompact {
+            text-align: right;
         }
 
         .media-compact-sep {
@@ -219,6 +236,7 @@
             display: inline-flex;
             align-items: center;
             min-height: 1.6em;
+            flex: 1 1 auto;
 
             img {
                 max-height: 1.6em;
@@ -412,6 +430,9 @@
     @media (orientation: landscape) {
         .wnpMediaInfo {
             text-align: center;
+            #mediaSource {
+                display: block;
+            }
             #mediaTitle,
             #mediaArtist,
             #mediaSubTitle,
