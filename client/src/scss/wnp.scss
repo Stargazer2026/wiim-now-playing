@@ -206,14 +206,9 @@
         }
 
         #mediaSourceCompact {
-            display: inline-flex;
-            align-items: center;
-
-            img {
-                max-height: 1.35em;
-                width: auto;
-                filter: invert(1);
-            }
+            display: inline;
+            font-size: calc(.875rem + .3vw + 0.25rem) !important;
+            text-align: right;
         }
 
         #mediaCompactStatus {

@@ -553,6 +553,7 @@ WNP.setSocketDefinitions = function () {
         var trackSource = (msg.TrackSource) ? msg.TrackSource : "";
         var sourceIdent = WNP.getSourceIdent(playMedium, trackSource);
         var sourceAlt = playMedium + ": " + trackSource;
+        var compactSourceText = trackSource || playMedium;
         // Did the source ident change...?
         if (sourceIdent !== WNP.d.prevSourceIdent) {
             if (sourceIdent !== "") {
@@ -627,17 +628,9 @@ WNP.setSocketDefinitions = function () {
             );
         }
         if (WNP.r.mediaSourceCompact) {
-            if (sourceIdent !== "") {
-                var compactSourceImg = document.createElement("img");
-                compactSourceImg.src = sourceIdent;
-                compactSourceImg.alt = sourceAlt;
-                compactSourceImg.title = sourceAlt;
-                WNP.r.mediaSourceCompact.innerHTML = compactSourceImg.outerHTML;
-            }
-            else {
-                WNP.r.mediaSourceCompact.innerText = sourceAlt;
-            }
-            WNP.r.mediaSourceCompact.style.display = sourceAlt.trim() ? "inline-flex" : "none";
+            WNP.r.mediaSourceCompact.innerText = compactSourceText;
+            WNP.r.mediaSourceCompact.title = sourceAlt;
+            WNP.r.mediaSourceCompact.style.display = compactSourceText.trim() ? "inline" : "none";
         }
         if (WNP.r.mediaCompactStatus) {
             var hasCompactSource = Boolean(WNP.r.mediaSourceCompact && WNP.r.mediaSourceCompact.style.display !== "none");
