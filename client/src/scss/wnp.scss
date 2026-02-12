@@ -216,13 +216,22 @@
             }
         }
 
+        #mediaCompactStatus {
+            justify-content: flex-end;
+            margin-top: 8px;
+            padding: 0 12px;
+
+            #mediaQualityCompact {
+                margin-right: 0;
+            }
+        }
+
         #mediaAlbumCompact {
             font-size: calc(.875rem + .3vw + 0.25rem) !important;
         }
 
         #mediaAlbumCompact {
-            margin-left: auto;
-            text-align: right;
+            text-align: left;
         }
 
         .wnpLyrics {

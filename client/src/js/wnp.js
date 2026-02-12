@@ -11,7 +11,7 @@ WNP.s = {
     locPort: (location.port && location.port != "80" && location.port != "1234") ? location.port : "80",
     rndAlbumArtUri: "./img/fake-album-1.jpg",
     // Device selection
-    aDeviceUI: ["btnPrev", "btnPlay", "btnNext", "btnRefresh", "selDeviceChoices", "devName", "devNameHolder", "mediaTitle", "mediaSubTitle", "mediaArtist", "mediaAlbum", "mediaBitRate", "mediaBitDepth", "mediaSampleRate", "mediaQualityIdent", "devVol", "btnRepeat", "btnShuffle", "progressPlayed", "progressLeft", "progressPercent", "mediaSource", "albumArt", "bgAlbumArtBlur", "btnDevSelect", "oDeviceList", "btnDevPreset", "oPresetList", "btnDevVolume", "rVolume", "lyricsContainer", "lyricsPrev", "lyricsCurrent", "lyricsNext",  "mediaTitleArtist", "mediaTitleCompact", "mediaArtistCompact", "mediaAlbumQuality", "mediaAlbumCompact", "mediaQualityCompact", "mediaSourceCompact"],
+    aDeviceUI: ["btnPrev", "btnPlay", "btnNext", "btnRefresh", "selDeviceChoices", "devName", "devNameHolder", "mediaTitle", "mediaSubTitle", "mediaArtist", "mediaAlbum", "mediaBitRate", "mediaBitDepth", "mediaSampleRate", "mediaQualityIdent", "devVol", "btnRepeat", "btnShuffle", "progressPlayed", "progressLeft", "progressPercent", "mediaSource", "albumArt", "bgAlbumArtBlur", "btnDevSelect", "oDeviceList", "btnDevPreset", "oPresetList", "btnDevVolume", "rVolume", "lyricsContainer", "lyricsPrev", "lyricsCurrent", "lyricsNext",  "mediaTitleArtist", "mediaTitleCompact", "mediaArtistCompact", "mediaAlbumQuality", "mediaAlbumCompact", "mediaQualityCompact", "mediaSourceCompact", "mediaCompactStatus"],
     // Server actions to be used in the app
     aServerUI: [
         "btnReboot",
@@ -616,16 +616,14 @@ WNP.setSocketDefinitions = function () {
                 WNP.r.mediaArtist.innerText
             );
         }
-        if (WNP.r.mediaAlbumCompact && WNP.r.mediaQualityCompact && WNP.r.mediaAlbumQuality) {
-            var compactQuality = qualiIdent;
-            WNP.setCompactLine(
-                WNP.r.mediaAlbumQuality,
-                WNP.r.mediaQualityCompact,
-                WNP.r.mediaAlbumCompact,
-                null,
-                compactQuality,
-                WNP.r.mediaAlbum.innerText
-            );
+        if (WNP.r.mediaAlbumCompact && WNP.r.mediaAlbumQuality) {
+            WNP.r.mediaAlbumCompact.innerText = WNP.r.mediaAlbum.innerText;
+            WNP.r.mediaAlbumCompact.style.display = WNP.r.mediaAlbum.innerText ? "" : "none";
+            WNP.r.mediaAlbumQuality.style.display = WNP.r.mediaAlbum.innerText ? "" : "none";
+        }
+        if (WNP.r.mediaQualityCompact) {
+            WNP.r.mediaQualityCompact.innerText = qualiIdent || "";
+            WNP.r.mediaQualityCompact.style.display = qualiIdent ? "" : "none";
         }
         if (WNP.r.mediaSourceCompact) {
             if (sourceIdent !== "") {
@@ -639,6 +637,11 @@ WNP.setSocketDefinitions = function () {
                 WNP.r.mediaSourceCompact.innerText = sourceAlt;
             }
             WNP.r.mediaSourceCompact.style.display = sourceAlt.trim() ? "inline-flex" : "none";
+        }
+        if (WNP.r.mediaCompactStatus) {
+            var hasCompactQuality = Boolean(WNP.r.mediaQualityCompact && WNP.r.mediaQualityCompact.style.display !== "none");
+            var hasCompactSource = Boolean(WNP.r.mediaSourceCompact && WNP.r.mediaSourceCompact.style.display !== "none");
+            WNP.r.mediaCompactStatus.style.display = (hasCompactQuality || hasCompactSource) ? "" : "none";
         }
 
         // Pre-process Album Art uri, if any is available from the metadata.
