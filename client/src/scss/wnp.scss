@@ -151,6 +151,7 @@
             font-size: calc(.875rem + .3vw);
         }
 
+        #mediaSource,
         #mediaTitle,
         #mediaArtist,
         #mediaSubTitle,
@@ -407,6 +408,7 @@
     @media (orientation: landscape) {
         .wnpMediaInfo {
             text-align: center;
+            #mediaSource,
             #mediaTitle,
             #mediaArtist,
             #mediaSubTitle,
