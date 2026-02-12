@@ -151,6 +151,7 @@
             font-size: calc(.875rem + .3vw);
         }
 
+        #mediaSource,
         #mediaTitle,
         #mediaArtist,
         #mediaSubTitle,
@@ -199,9 +200,19 @@
             font-size: calc(1.325rem + .9vw);
         }
 
-        #mediaAlbumCompact,
-        #mediaQualityCompact {
+        #mediaAlbumCompact {
             font-size: calc(.875rem + .3vw);
+        }
+
+        #mediaQualityCompact,
+        #mediaSourceCompact {
+            font-size: calc(.82rem + .24vw);
+            line-height: 1.1;
+        }
+
+        #mediaSourceCompact {
+            margin-left: auto;
+            text-align: right;
         }
 
         #mediaAlbumCompact {
@@ -209,8 +220,7 @@
         }
 
         #mediaAlbumCompact {
-            margin-left: auto;
-            text-align: right;
+            text-align: left;
         }
 
         .wnpLyrics {
@@ -396,6 +406,7 @@
     @media (orientation: landscape) {
         .wnpMediaInfo {
             text-align: center;
+            #mediaSource,
             #mediaTitle,
             #mediaArtist,
             #mediaSubTitle,
