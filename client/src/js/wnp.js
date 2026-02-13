@@ -725,7 +725,9 @@ WNP.setSocketDefinitions = function () {
         var albumArtUriRaw = (msg.trackMetaData && msg.trackMetaData["upnp:albumArtURI"]) ? msg.trackMetaData["upnp:albumArtURI"] : "";
         var albumArtUri = WNP.checkAlbumArtURI(albumArtUriRaw, msg.metadataTimeStamp);
 
-        // Set Album Art once per track to avoid flickering.
+        // Set Album Art with stable behavior per track.
+        // 1) On track change we always set once (device art if available, otherwise placeholder).
+        // 2) If the same track later receives a valid device art URI, set once and lock.
         var currentTrackInfo = WNP.r.mediaTitle.innerText + "|" + WNP.r.mediaSubTitle.innerText + "|" + WNP.r.mediaArtist.innerText + "|" + WNP.r.mediaAlbum.innerText;
         if (WNP.d.prevTrackInfo !== currentTrackInfo) {
             WNP.d.prevTrackInfo = currentTrackInfo; // Remember the last track info
@@ -733,10 +735,19 @@ WNP.setSocketDefinitions = function () {
             var trackAlbum = (msg.trackMetaData && msg.trackMetaData["upnp:album"]) ? msg.trackMetaData["upnp:album"] : "";
             var trackTitle = (msg.trackMetaData && msg.trackMetaData["dc:title"]) ? msg.trackMetaData["dc:title"] : "";
             WNP.d.currentTrackKey = (trackArtist + "|" + trackAlbum + "|" + trackTitle).trim().toLowerCase();
-            WNP.d.currentTrackCoverLocked = Boolean(albumArtUriRaw);
+            WNP.d.currentTrackCoverLocked = false;
             console.log("WNP", "Track changed:", currentTrackInfo);
             WNP.clearLyrics();
             WNP.setAlbumArt(albumArtUri);
+            if (albumArtUriRaw) {
+                WNP.d.currentTrackCoverLocked = true;
+            }
+        } else if (!WNP.d.currentTrackCoverLocked && albumArtUriRaw) {
+            // Same song, but now a valid device URI is available: switch exactly once.
+            if (WNP.r.albumArt.src !== albumArtUri) {
+                WNP.setAlbumArt(albumArtUri);
+            }
+            WNP.d.currentTrackCoverLocked = true;
         }
 
         // Device volume
