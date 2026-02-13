@@ -50,7 +50,8 @@ WNP.d = {
     lyricsLines: [], // Parsed lyrics lines
     lyricsCookieApplied: false, // Track if cookie setting has been applied
     currentTrackKey: null,
-    currentTrackCoverLocked: false
+    currentTrackCoverLocked: false,
+    pendingTrackCoverUri: null
 };
 
 // Reference placeholders.
@@ -357,6 +358,29 @@ WNP.setUIListeners = function () {
                     screenOffDelaySec: delayValue
                 }
             });
+        });
+    }
+
+    if (this.r.albumArt) {
+        this.r.albumArt.addEventListener("load", function () {
+            if (!WNP.d.pendingTrackCoverUri) {
+                return;
+            }
+            if (WNP.normalizeUri(this.src) === WNP.d.pendingTrackCoverUri) {
+                WNP.d.currentTrackCoverLocked = true;
+                WNP.d.pendingTrackCoverUri = null;
+            }
+        });
+
+        this.r.albumArt.addEventListener("error", function () {
+            if (!WNP.d.pendingTrackCoverUri) {
+                return;
+            }
+            if (WNP.normalizeUri(this.src) === WNP.d.pendingTrackCoverUri) {
+                // Keep unlocked so the next metadata update can retry the same track.
+                WNP.d.currentTrackCoverLocked = false;
+                WNP.d.pendingTrackCoverUri = null;
+            }
         });
     }
 
@@ -736,18 +760,20 @@ WNP.setSocketDefinitions = function () {
             var trackTitle = (msg.trackMetaData && msg.trackMetaData["dc:title"]) ? msg.trackMetaData["dc:title"] : "";
             WNP.d.currentTrackKey = (trackArtist + "|" + trackAlbum + "|" + trackTitle).trim().toLowerCase();
             WNP.d.currentTrackCoverLocked = false;
+            WNP.d.pendingTrackCoverUri = null;
             console.log("WNP", "Track changed:", currentTrackInfo);
             WNP.clearLyrics();
-            WNP.setAlbumArt(albumArtUri);
             if (albumArtUriRaw) {
-                WNP.d.currentTrackCoverLocked = true;
+                WNP.trySetTrackCover(albumArtUri);
+            }
+            else {
+                WNP.setAlbumArt(albumArtUri);
             }
         } else if (!WNP.d.currentTrackCoverLocked && albumArtUriRaw) {
             // Same song, but now a valid device URI is available: switch exactly once.
             if (WNP.r.albumArt.src !== albumArtUri) {
-                WNP.setAlbumArt(albumArtUri);
+                WNP.trySetTrackCover(albumArtUri);
             }
-            WNP.d.currentTrackCoverLocked = true;
         }
 
         // Device volume
@@ -807,8 +833,7 @@ WNP.setSocketDefinitions = function () {
             return;
         }
         var coverUri = WNP.buildResolvedCoverUri(msg.cacheKey);
-        WNP.setAlbumArt(coverUri);
-        WNP.d.currentTrackCoverLocked = true;
+        WNP.trySetTrackCover(coverUri);
     });
 
     // On lyrics
@@ -1231,6 +1256,19 @@ WNP.buildResolvedCoverUri = function (cacheKey) {
         return "http://" + WNP.s.locHostname + ":" + WNP.s.locPort + "/cover-art/" + encodeURIComponent(cacheKey);
     }
     return "http://" + WNP.s.locHostname + "/cover-art/" + encodeURIComponent(cacheKey);
+};
+
+WNP.normalizeUri = function (uri) {
+    try {
+        return new URL(uri, window.location.href).href;
+    } catch {
+        return uri;
+    }
+};
+
+WNP.trySetTrackCover = function (imgUri) {
+    WNP.d.pendingTrackCoverUri = WNP.normalizeUri(imgUri);
+    WNP.setAlbumArt(imgUri);
 };
 
 /**
