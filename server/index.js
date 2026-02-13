@@ -32,6 +32,7 @@ const shell = require("./lib/shell.js"); // Shell command functionality
 const lib = require("./lib/lib.js"); // Generic functionality
 const lyrics = require("./lib/lyrics.js"); // Lyrics functionality
 const lyricsCache = require("./lib/lyricsCache.js");
+const coverArt = require("./lib/coverArt.js");
 const kiosk = require("./lib/kiosk.js");
 const log = require("debug")("index"); // See README.md on debugging
 
@@ -81,6 +82,11 @@ let serverSettings = { // Placeholder for current server settings
                 "prefetch": "album",
                 "maxPrefetchConcurrency": 4
             }
+        },
+        "coverArt": {
+            "enabled": false,
+            "provider": "caa",
+            "memoryPoolMB": 100
         }
     },
     "kiosk": {
@@ -122,6 +128,7 @@ const stopPollingIfIdle = () => {
 // Get the server settings from local file storage, if any.
 lib.getSettings(serverSettings);
 lyricsCache.startCacheMaintenance(serverSettings);
+coverArt.configure(serverSettings);
 kiosk.applySettings(serverSettings);
 if (serverSettings.kiosk && serverSettings.kiosk.host) {
     ensurePolling();
@@ -219,6 +226,19 @@ app.get("/proxy-art", limiter, function (req, res) {
             res.status(404).send("<div>404 Not Found</div>");
         });
 
+});
+
+app.get("/cover-art/:id", limiter, function (req, res) {
+    const entry = coverArt.getCoverImage(req.params.id);
+    if (!entry) {
+        res.status(404).send("<div>404 Not Found</div>");
+        return;
+    }
+
+    res.setHeader("Content-Type", entry.contentType || "image/jpeg");
+    res.setHeader("Content-Length", entry.size);
+    res.setHeader("Cache-Control", "public, max-age=300");
+    res.send(entry.buffer);
 });
 
 // ===========================================================================
@@ -370,6 +390,17 @@ io.on("connection", (socket) => {
                     log("Lyrics update error", error);
                 });
             }
+        }
+        if (msg && msg.features && msg.features.coverArt) {
+            if (typeof msg.features.coverArt.enabled === "boolean") {
+                serverSettings.features.coverArt.enabled = msg.features.coverArt.enabled;
+            }
+            if (typeof msg.features.coverArt.memoryPoolMB === "number") {
+                serverSettings.features.coverArt.memoryPoolMB = Math.max(0, Math.round(msg.features.coverArt.memoryPoolMB));
+            }
+            lib.saveSettings(serverSettings);
+            coverArt.configure(serverSettings);
+            sockets.getServerSettings(io, serverSettings);
         }
         if (msg && msg.kiosk) {
             if (typeof msg.kiosk.host === "string") {

@@ -188,6 +188,26 @@
                                     </div>
                                 </div>
 
+                                <!-- Cover art settings -->
+                                <div class="border rounded p-3 mb-3">
+                                    <h6 class="mb-3">Cover Art (CAA)</h6>
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="chkCoverArtEnabled">
+                                        <label class="form-check-label" for="chkCoverArtEnabled">Enable online cover lookup (Cover Art Archive)</label>
+                                    </div>
+                                    <div class="mt-2">
+                                        <label class="form-label" for="coverArtPoolMB">RAM pool size for cover images (MB)</label>
+                                        <input class="form-control" type="number" id="coverArtPoolMB" step="1" min="0" max="2048">
+                                        <div class="form-text">
+                                            Images are cached in RAM only (LRU). Nothing is stored on disk/database.
+                                        </div>
+                                    </div>
+                                    <div class="form-text mt-2">
+                                        Uses <a href="https://coverartarchive.org/" target="_blank" rel="noopener noreferrer">Cover Art Archive (CAA)</a>.
+                                        You are responsible for complying with the license/terms. By enabling this option you confirm that responsibility.
+                                    </div>
+                                </div>
+
 
                                 <!-- Server information -->
                                 <div class="mb-3">

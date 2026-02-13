@@ -27,6 +27,8 @@ WNP.s = {
         "chkLyricsCacheEnabled",
         "lyricsCacheSizeMB",
         "lyricsPrefetchMode",
+        "chkCoverArtEnabled",
+        "coverArtPoolMB",
         "kioskHost",
         "kioskPassword",
         "kioskDelaySec"
@@ -281,6 +283,36 @@ WNP.setUIListeners = function () {
         });
     }
 
+
+
+    if (this.r.chkCoverArtEnabled) {
+        this.r.chkCoverArtEnabled.addEventListener("change", function () {
+            socket.emit("server-settings-update", {
+                features: {
+                    coverArt: {
+                        enabled: this.checked
+                    }
+                }
+            });
+        });
+    }
+
+    if (this.r.coverArtPoolMB) {
+        this.r.coverArtPoolMB.addEventListener("change", function () {
+            var sizeValue = parseInt(this.value, 10);
+            if (isNaN(sizeValue) || sizeValue < 0) {
+                sizeValue = 0;
+            }
+            socket.emit("server-settings-update", {
+                features: {
+                    coverArt: {
+                        memoryPoolMB: sizeValue
+                    }
+                }
+            });
+        });
+    }
+
     if (this.r.kioskHost) {
         this.r.kioskHost.addEventListener("change", function () {
             socket.emit("server-settings-update", {
@@ -417,6 +449,15 @@ WNP.setSocketDefinitions = function () {
                 WNP.setCookie("wnpLyricsEnabled", WNP.r.chkLyricsEnabled.checked, 180);
             }
             WNP.d.lyricsCookieApplied = true;
+        }
+
+
+        if (WNP.r.chkCoverArtEnabled) {
+            WNP.r.chkCoverArtEnabled.checked = Boolean(msg && msg.features && msg.features.coverArt && msg.features.coverArt.enabled);
+        }
+        if (WNP.r.coverArtPoolMB) {
+            var coverPoolMB = (msg && msg.features && msg.features.coverArt && typeof msg.features.coverArt.memoryPoolMB === "number") ? msg.features.coverArt.memoryPoolMB : 100;
+            WNP.r.coverArtPoolMB.value = coverPoolMB;
         }
 
         if (WNP.r.kioskHost) {
@@ -667,7 +708,7 @@ WNP.setSocketDefinitions = function () {
         }
 
         // Pre-process Album Art uri, if any is available from the metadata.
-        var albumArtUriRaw = (msg.trackMetaData && msg.trackMetaData["upnp:albumArtURI"]) ? msg.trackMetaData["upnp:albumArtURI"] : "";
+        var albumArtUriRaw = msg.resolvedAlbumArtURI || ((msg.trackMetaData && msg.trackMetaData["upnp:albumArtURI"]) ? msg.trackMetaData["upnp:albumArtURI"] : "");
         var albumArtUri = WNP.checkAlbumArtURI(albumArtUriRaw, msg.metadataTimeStamp);
 
         // Set Album Art, only if the track changed and the URI changed
@@ -1164,6 +1205,8 @@ WNP.checkAlbumArtURI = function (sAlbumArtUri, nTimestamp) {
         }
         return sAlbumArtProxyUri;
     } else if (sAlbumArtUri && sAlbumArtUri.startsWith("http")) {
+        return sAlbumArtUri;
+    } else if (sAlbumArtUri && sAlbumArtUri.startsWith("/")) {
         return sAlbumArtUri;
     } else {
         // Looks like an invalid/un_known album art, use the fallback.

@@ -18,8 +18,34 @@ const UPnP = require("upnp-device-client");
 const xml2js = require("xml2js");
 const lib = require("./lib.js"); // Generic functionality
 const lyrics = require("./lyrics.js"); // Lyrics functionality
+const coverArt = require("./coverArt.js");
 const kiosk = require("./kiosk.js");
 const log = require("debug")("lib:upnpClient");
+
+const resolveAndEmitCoverArt = (io, deviceInfo, serverSettings) => {
+    if (!deviceInfo || !deviceInfo.metadata || !deviceInfo.metadata.trackMetaData) {
+        return;
+    }
+
+    const stamp = deviceInfo.metadata.metadataTimeStamp;
+    coverArt.resolveCoverUrl(deviceInfo.metadata.trackMetaData, serverSettings)
+        .then((coverUrl) => {
+            if (!coverUrl) {
+                return;
+            }
+            if (!deviceInfo.metadata || deviceInfo.metadata.metadataTimeStamp !== stamp) {
+                return;
+            }
+            if (deviceInfo.metadata.resolvedAlbumArtURI === coverUrl) {
+                return;
+            }
+            deviceInfo.metadata.resolvedAlbumArtURI = coverUrl;
+            io.emit("metadata", deviceInfo.metadata);
+        })
+        .catch((error) => {
+            log("resolveAndEmitCoverArt()", error);
+        });
+};
 
 const prefetchNextTracks = (result, serverSettings) => {
     if (!result || !result.NextTrackMetaData) {
@@ -235,6 +261,7 @@ const updateDeviceMetadata = (io, deviceInfo, serverSettings) => {
                                             metadataTimeStamp: lib.getTimeStamp()
                                         };;
                                         io.emit("metadata", deviceInfo.metadata);
+                                        resolveAndEmitCoverArt(io, deviceInfo, serverSettings);
                                         lyrics.getLyricsForMetadata(io, deviceInfo, serverSettings).catch((error) => {
                                             log("Lyrics update error", error);
                                         });
@@ -270,6 +297,7 @@ const updateDeviceMetadata = (io, deviceInfo, serverSettings) => {
                                 metadataTimeStamp: lib.getTimeStamp()
                             };
                             io.emit("metadata", deviceInfo.metadata);
+                            resolveAndEmitCoverArt(io, deviceInfo, serverSettings);
                             lyrics.getLyricsForMetadata(io, deviceInfo, serverSettings).catch((error) => {
                                 log("Lyrics update error", error);
                             });
@@ -328,6 +356,7 @@ const updateDeviceMetadata = (io, deviceInfo, serverSettings) => {
                                             metadataTimeStamp: lib.getTimeStamp()
                                         };
                                         io.emit("metadata", deviceInfo.metadata);
+                                        resolveAndEmitCoverArt(io, deviceInfo, serverSettings);
                                         lyrics.getLyricsForMetadata(io, deviceInfo, serverSettings).catch((error) => {
                                             log("Lyrics update error", error);
                                         });
@@ -363,6 +392,7 @@ const updateDeviceMetadata = (io, deviceInfo, serverSettings) => {
                                 metadataTimeStamp: lib.getTimeStamp()
                             };
                             io.emit("metadata", deviceInfo.metadata);
+                            resolveAndEmitCoverArt(io, deviceInfo, serverSettings);
                             lyrics.getLyricsForMetadata(io, deviceInfo, serverSettings).catch((error) => {
                                 log("Lyrics update error", error);
                             });
