@@ -721,7 +721,7 @@ WNP.setSocketDefinitions = function () {
             console.log("WNP", "Track changed:", currentTrackInfo);
             WNP.clearLyrics();
         }
-        if (trackChanged && currentAlbumArt != albumArtUri) {
+        if (currentAlbumArt != albumArtUri) {
             WNP.setAlbumArt(albumArtUri);
         }
 

@@ -465,7 +465,7 @@ WNP.setSocketDefinitions = function () {
             WNP.d.prevTrackInfo = currentTrackInfo; // Remember the last track info
             console.log("WNP", "Track changed:", currentTrackInfo);
         }
-        if (trackChanged && currentAlbumArt != albumArtUri) {
+        if (currentAlbumArt != albumArtUri) {
             WNP.r.sAlbumArtUriRaw.innerText = albumArtUriRaw;
             WNP.r.sAlbumArtUri.innerText = albumArtUri;
         }
