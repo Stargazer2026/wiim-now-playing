@@ -98,6 +98,7 @@ const getSettings = (serverSettings) => {
         }
         if (settings.features) {
             const defaultLyrics = serverSettings.features.lyrics;
+            const defaultCoverArt = serverSettings.features.coverArt;
             serverSettings.features = {
                 ...serverSettings.features,
                 ...settings.features
@@ -113,6 +114,12 @@ const getSettings = (serverSettings) => {
                         ...settings.features.lyrics.cache
                     };
                 }
+            }
+            if (settings.features.coverArt) {
+                serverSettings.features.coverArt = {
+                    ...defaultCoverArt,
+                    ...settings.features.coverArt
+                };
             }
         }
         if (settings.kiosk) {
