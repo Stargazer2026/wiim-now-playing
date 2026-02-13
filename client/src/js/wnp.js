@@ -27,6 +27,9 @@ WNP.s = {
         "chkLyricsCacheEnabled",
         "lyricsCacheSizeMB",
         "lyricsPrefetchMode",
+        "chkCoverArtEnabled",
+        "selCoverArtProvider",
+        "coverArtMemoryPoolMB",
         "kioskHost",
         "kioskPassword",
         "kioskDelaySec"
@@ -45,7 +48,9 @@ WNP.d = {
     lyrics: null, // Current lyrics payload
     lyricsIndex: null, // Current lyrics line index
     lyricsLines: [], // Parsed lyrics lines
-    lyricsCookieApplied: false // Track if cookie setting has been applied
+    lyricsCookieApplied: false, // Track if cookie setting has been applied
+    currentTrackKey: null,
+    currentTrackCoverLocked: false
 };
 
 // Reference placeholders.
@@ -281,6 +286,46 @@ WNP.setUIListeners = function () {
         });
     }
 
+    if (this.r.chkCoverArtEnabled) {
+        this.r.chkCoverArtEnabled.addEventListener("change", function () {
+            socket.emit("server-settings-update", {
+                features: {
+                    coverArt: {
+                        enabled: this.checked
+                    }
+                }
+            });
+        });
+    }
+
+    if (this.r.selCoverArtProvider) {
+        this.r.selCoverArtProvider.addEventListener("change", function () {
+            socket.emit("server-settings-update", {
+                features: {
+                    coverArt: {
+                        provider: this.value
+                    }
+                }
+            });
+        });
+    }
+
+    if (this.r.coverArtMemoryPoolMB) {
+        this.r.coverArtMemoryPoolMB.addEventListener("change", function () {
+            var poolValue = parseInt(this.value, 10);
+            if (isNaN(poolValue) || poolValue < 1) {
+                poolValue = 1;
+            }
+            socket.emit("server-settings-update", {
+                features: {
+                    coverArt: {
+                        memoryPoolMB: poolValue
+                    }
+                }
+            });
+        });
+    }
+
     if (this.r.kioskHost) {
         this.r.kioskHost.addEventListener("change", function () {
             socket.emit("server-settings-update", {
@@ -397,6 +442,16 @@ WNP.setSocketDefinitions = function () {
             if (WNP.r.lyricsPrefetchMode) {
                 WNP.r.lyricsPrefetchMode.value = cacheSettings.prefetch || "off";
             }
+        }
+
+        if (WNP.r.chkCoverArtEnabled) {
+            WNP.r.chkCoverArtEnabled.checked = Boolean(msg && msg.features && msg.features.coverArt && msg.features.coverArt.enabled);
+        }
+        if (WNP.r.selCoverArtProvider) {
+            WNP.r.selCoverArtProvider.value = (msg && msg.features && msg.features.coverArt && msg.features.coverArt.provider) ? msg.features.coverArt.provider : "caa";
+        }
+        if (WNP.r.coverArtMemoryPoolMB) {
+            WNP.r.coverArtMemoryPoolMB.value = (msg && msg.features && msg.features.coverArt && typeof msg.features.coverArt.memoryPoolMB === "number") ? msg.features.coverArt.memoryPoolMB : 100;
         }
 
         if (WNP.r.chkLyricsEnabled && !WNP.d.lyricsCookieApplied) {
@@ -670,17 +725,17 @@ WNP.setSocketDefinitions = function () {
         var albumArtUriRaw = (msg.trackMetaData && msg.trackMetaData["upnp:albumArtURI"]) ? msg.trackMetaData["upnp:albumArtURI"] : "";
         var albumArtUri = WNP.checkAlbumArtURI(albumArtUriRaw, msg.metadataTimeStamp);
 
-        // Set Album Art, only if the track changed and the URI changed
-        var trackChanged = false;
+        // Set Album Art once per track to avoid flickering.
         var currentTrackInfo = WNP.r.mediaTitle.innerText + "|" + WNP.r.mediaSubTitle.innerText + "|" + WNP.r.mediaArtist.innerText + "|" + WNP.r.mediaAlbum.innerText;
-        var currentAlbumArt = WNP.r.albumArt.src;
         if (WNP.d.prevTrackInfo !== currentTrackInfo) {
-            trackChanged = true;
             WNP.d.prevTrackInfo = currentTrackInfo; // Remember the last track info
+            var trackArtist = (msg.trackMetaData && msg.trackMetaData["upnp:artist"]) ? msg.trackMetaData["upnp:artist"] : "";
+            var trackAlbum = (msg.trackMetaData && msg.trackMetaData["upnp:album"]) ? msg.trackMetaData["upnp:album"] : "";
+            var trackTitle = (msg.trackMetaData && msg.trackMetaData["dc:title"]) ? msg.trackMetaData["dc:title"] : "";
+            WNP.d.currentTrackKey = (trackArtist + "|" + trackAlbum + "|" + trackTitle).trim().toLowerCase();
+            WNP.d.currentTrackCoverLocked = Boolean(albumArtUriRaw);
             console.log("WNP", "Track changed:", currentTrackInfo);
             WNP.clearLyrics();
-        }
-        if (trackChanged && currentAlbumArt != albumArtUri) {
             WNP.setAlbumArt(albumArtUri);
         }
 
@@ -731,6 +786,18 @@ WNP.setSocketDefinitions = function () {
             WNP.r.btnShuffle.className = "btn btn-outline-light";
         }
 
+    });
+
+    socket.on("cover-art-resolved", function (msg) {
+        if (!msg || !msg.cacheKey || !WNP.d.currentTrackKey || msg.trackKey !== WNP.d.currentTrackKey) {
+            return;
+        }
+        if (WNP.d.currentTrackCoverLocked) {
+            return;
+        }
+        var coverUri = WNP.buildResolvedCoverUri(msg.cacheKey);
+        WNP.setAlbumArt(coverUri);
+        WNP.d.currentTrackCoverLocked = true;
     });
 
     // On lyrics
@@ -1143,6 +1210,16 @@ WNP.getCookie = function (name) {
         }
     }
     return null;
+};
+
+WNP.buildResolvedCoverUri = function (cacheKey) {
+    if (!cacheKey) {
+        return WNP.s.rndAlbumArtUri;
+    }
+    if (WNP.s.locPort != "80") {
+        return "http://" + WNP.s.locHostname + ":" + WNP.s.locPort + "/cover-art/" + encodeURIComponent(cacheKey);
+    }
+    return "http://" + WNP.s.locHostname + "/cover-art/" + encodeURIComponent(cacheKey);
 };
 
 /**
