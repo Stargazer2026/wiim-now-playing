@@ -587,6 +587,10 @@
             #albumArt {
                 object-fit: cover;
             }
+
+            .wnpFooter {
+                transform: translateY(-15px);
+            }
         }
 
         // Small devices (landscape phones, 576px and up)
