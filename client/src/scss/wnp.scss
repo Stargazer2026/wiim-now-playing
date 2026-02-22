@@ -18,7 +18,7 @@
     .wnpContainer {
         display: grid;
         grid-template-columns: 1fr;
-        grid-template-rows: 1.4fr .6fr 120px;
+        grid-template-rows: .92fr minmax(0, 1.08fr) 120px;
         gap: 0px 0px;
         grid-auto-flow: row;
         grid-template-areas:
@@ -41,14 +41,17 @@
     .wnpAlbumArt {
         grid-area: wnpAlbumArt;
 
-        padding: 40px 24px 16px 24px;
+        padding: 24px 24px 12px 24px;
         text-align: center;
         overflow: hidden;
+        min-height: 0;
     }
 
     .wnpMediaInfo {
         grid-area: wnpMediaInfo;
         padding: 0px 24px 0 24px;
+        min-height: 0;
+        overflow: hidden;
     }
 
     .wnpFooter {
@@ -89,10 +92,10 @@
     /* Album Art contents */
     .wnpAlbumArt {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: center;
 
-      padding: 40px 24px 16px 24px;
+      padding: 24px 24px 12px 24px;
       height: 100%;
       overflow: hidden;
     }
@@ -211,11 +214,19 @@
 
         .media-compact-title {
             flex: 1 1 auto;
+            width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         .media-compact-artist {
-            flex: 0 0 auto;
-            text-align: right;
+            flex: 1 1 auto;
+            width: 100%;
+            text-align: left;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         .media-compact-sep {
@@ -223,15 +234,12 @@
         }
 
         #mediaTitleCompact {
-            font-size: calc(1.325rem + .9vw);
+            font-size: calc((1.325rem + .9vw) * 2);
         }
 
         #mediaArtistCompact {
-            font-size: calc(1.325rem + .9vw);
-        }
-
-        #mediaAlbumCompact {
-            font-size: calc(.875rem + .3vw);
+            font-size: calc((1.325rem + .9vw) * 1.6);
+            line-height: 1.1;
         }
 
         #mediaQualityCompact,
@@ -241,21 +249,12 @@
         }
 
         #mediaSourceCompact {
-            margin-left: auto;
             text-align: right;
-        }
-
-        #mediaAlbumCompact {
-            font-size: calc(.875rem + .3vw + 0.25rem) !important;
-        }
-
-        #mediaAlbumCompact {
-            text-align: left;
         }
 
         .wnpLyrics {
             display: none;
-            margin-top: 14px;
+            margin-top: 8px;
             padding: 8px 12px;
             border-radius: 12px;
             background: rgba(0, 0, 0, 0.35);
@@ -330,6 +329,21 @@
         #progressPercent {
             height: 2px;
             --bs-bg-opacity: .5;
+            margin-top: 30px;
+        }
+
+        #mediaSourceFooter,
+        #mediaQualityIdent {
+            border: 1px solid rgba(118, 125, 123, 1);
+            border-radius: 999px;
+            font-weight: var(--bs-body-font-weight);
+            color: rgba(179, 189, 186, 1) !important;
+            background: transparent;
+            font-size: 0.75em;
+            padding: 0.2em 0.5em;
+            line-height: 1.1;
+            vertical-align: middle;
+            margin-right: 10px;
         }
 
         .btn-group.primary {
@@ -353,27 +367,6 @@
                 font-size: 1.75rem;
             }
         }
-
-        .btn-group.secondary {
-            position: absolute;
-            top: 5px;
-            right: 15px;
-
-            button,
-            a {
-                border: none;
-                padding: 6px;
-            }
-
-            button:hover,
-            button:active,
-            a:hover,
-            a:active {
-                background-color: transparent;
-                color: var(--bs-btn-color);
-            }
-        }
-
         .dropup .dropdown-toggle::after {
             border-width: .2em;
             vertical-align: 0.3em;
@@ -453,6 +446,10 @@
             #mediaQuality,
             div:has(>#mediaAlbum) {
                 display: block;
+            }
+
+            #mediaSourceFooter {
+                display: none;
             }
 
             .media-compact-line {
