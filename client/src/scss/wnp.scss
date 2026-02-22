@@ -134,7 +134,7 @@
       height: 100%;
       display: block;
 
-      object-fit: contain;
+      object-fit: cover;
       border-radius: inherit;
       box-shadow: none;
     }
@@ -577,7 +577,20 @@
 
         @media (orientation: portrait) {
             .wnpContainer {
-                grid-template-rows: 1.12fr .88fr 56px;
+                grid-template-rows: minmax(0, 1.28fr) minmax(0, .72fr) 56px;
+            }
+
+            .wnpAlbumArt {
+                padding-left: 24px;
+                padding-right: 24px;
+            }
+
+            .wnpAlbumArt > div {
+                width: 100%;
+                height: auto;
+                max-width: 100%;
+                max-height: 100%;
+                aspect-ratio: var(--album-art-ratio, 1 / 1);
             }
 
             .wnpMediaInfo {
@@ -598,6 +611,7 @@
 
             #albumArt {
                 object-fit: cover;
+                object-position: center;
             }
 
             .wnpFooter {

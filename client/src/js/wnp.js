@@ -363,6 +363,11 @@ WNP.setUIListeners = function () {
 
     if (this.r.albumArt) {
         this.r.albumArt.addEventListener("load", function () {
+            var albumArtContainer = this.parentElement;
+            if (albumArtContainer && this.naturalWidth && this.naturalHeight) {
+                albumArtContainer.style.setProperty("--album-art-ratio", this.naturalWidth + " / " + this.naturalHeight);
+            }
+
             if (!WNP.d.pendingTrackCoverUri) {
                 return;
             }
@@ -373,6 +378,11 @@ WNP.setUIListeners = function () {
         });
 
         this.r.albumArt.addEventListener("error", function () {
+            var albumArtContainer = this.parentElement;
+            if (albumArtContainer) {
+                albumArtContainer.style.removeProperty("--album-art-ratio");
+            }
+
             if (!WNP.d.pendingTrackCoverUri) {
                 return;
             }
