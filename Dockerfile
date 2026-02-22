@@ -20,6 +20,10 @@ RUN npm ci --omit=dev
 # The source comes from the already checked-out GitHub workspace
 COPY . .
 
+# Build the frontend assets inside the image so `server/public` always
+# matches the checked-in client sources.
+RUN npm run client-build
+
 # Expose the port the app runs on (default 80, but can be adjusted if necessary)
 EXPOSE 80
 
