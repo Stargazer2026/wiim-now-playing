@@ -32,6 +32,8 @@ const shell = require("./lib/shell.js"); // Shell command functionality
 const lib = require("./lib/lib.js"); // Generic functionality
 const lyrics = require("./lib/lyrics.js"); // Lyrics functionality
 const lyricsCache = require("./lib/lyricsCache.js");
+const coverArt = require("./lib/coverArt.js");
+const kiosk = require("./lib/kiosk.js");
 const log = require("debug")("index"); // See README.md on debugging
 
 // For versionioning purposes
@@ -80,7 +82,17 @@ let serverSettings = { // Placeholder for current server settings
                 "prefetch": "album",
                 "maxPrefetchConcurrency": 4
             }
+        },
+        "coverArt": {
+            "enabled": false,
+            "provider": "caa",
+            "memoryPoolMB": 100
         }
+    },
+    "kiosk": {
+        "host": "",
+        "password": "",
+        "screenOffDelaySec": 300
     },
     "server": null, // Placeholder for the express server (port) information
     "version": { // Version information for the server and client
@@ -93,10 +105,34 @@ let serverSettings = { // Placeholder for current server settings
 let pollState = null; // For the renderer state
 let pollMetadata = null; // For the renderer metadata
 
+const ensurePolling = () => {
+    if (pollState || pollMetadata) {
+        return;
+    }
+    pollMetadata = upnp.startMetadata(io, deviceInfo, serverSettings);
+    pollState = upnp.startState(io, deviceInfo, serverSettings);
+};
+
+const stopPollingIfIdle = () => {
+    const kioskEnabled = Boolean(serverSettings.kiosk && serverSettings.kiosk.host);
+    if (io.sockets.sockets.size === 0 && !kioskEnabled) {
+        log("No sockets are connected!");
+        upnp.stopPolling(pollState, "pollState");
+        upnp.stopPolling(pollMetadata, "pollMetadata");
+        pollState = null;
+        pollMetadata = null;
+    }
+};
+
 // ===========================================================================
 // Get the server settings from local file storage, if any.
 lib.getSettings(serverSettings);
 lyricsCache.startCacheMaintenance(serverSettings);
+coverArt.applySettings(serverSettings);
+kiosk.applySettings(serverSettings);
+if (serverSettings.kiosk && serverSettings.kiosk.host) {
+    ensurePolling();
+}
 
 // ===========================================================================
 // Initial SSDP scan for devices.
@@ -192,6 +228,17 @@ app.get("/proxy-art", limiter, function (req, res) {
 
 });
 
+app.get("/cover-art/:cacheKey", limiter, function (req, res) {
+    const entry = coverArt.getCachedImage(req.params.cacheKey);
+    if (!entry) {
+        res.status(404).send("<div>404 Not Found</div>");
+        return;
+    }
+    res.setHeader("Content-Type", entry.contentType);
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    res.send(entry.buffer);
+});
+
 // ===========================================================================
 // Socket.io definitions
 
@@ -208,19 +255,16 @@ io.on("connection", (socket) => {
     log("No. of sockets:", io.sockets.sockets.size);
     if (io.sockets.sockets.size === 1) {
         // Start polling the selected device
-        pollMetadata = upnp.startMetadata(io, deviceInfo, serverSettings);
-        pollState = upnp.startState(io, deviceInfo, serverSettings);
+        ensurePolling();
     }
-    else if (io.sockets.sockets.size >= 1) {
-        // If new client, send current state and metadata 'immediately'
-        // When sending directly after a reboot things get wonky
-        // setTimeout(() => {
-        socket.emit("state", deviceInfo.state);
-        socket.emit("metadata", deviceInfo.metadata);
-        if (deviceInfo.lyrics) {
-            socket.emit("lyrics", deviceInfo.lyrics);
-        }
-        // }, serverSettings.timeouts.immediate)
+
+    // Also send the latest known state for newly connected clients.
+    // This includes the very first connected client, which otherwise
+    // would wait for the next polling cycle before seeing metadata/lyrics.
+    socket.emit("state", deviceInfo.state);
+    socket.emit("metadata", deviceInfo.metadata);
+    if (deviceInfo.lyrics) {
+        socket.emit("lyrics", deviceInfo.lyrics);
     }
 
     /**
@@ -234,12 +278,7 @@ io.on("connection", (socket) => {
         // On disconnection we check the amount of connected clients.
         // If there is none, the streaming and polling are stopped.
         log("No. of sockets:", io.sockets.sockets.size);
-        if (io.sockets.sockets.size === 0) {
-            log("No sockets are connected!");
-            // Stop polling the selected device
-            upnp.stopPolling(pollState, "pollState");
-            upnp.stopPolling(pollMetadata, "pollMetadata");
-        }
+        stopPollingIfIdle();
 
     });
 
@@ -346,6 +385,42 @@ io.on("connection", (socket) => {
                 lyrics.getLyricsForMetadata(io, deviceInfo, serverSettings).catch((error) => {
                     log("Lyrics update error", error);
                 });
+            }
+        }
+        if (msg && msg.features && msg.features.coverArt) {
+            if (typeof msg.features.coverArt.enabled === "boolean") {
+                serverSettings.features.coverArt.enabled = msg.features.coverArt.enabled;
+            }
+            if (typeof msg.features.coverArt.provider === "string") {
+                const provider = msg.features.coverArt.provider.toLowerCase();
+                if (provider === "caa" || provider === "itunes") {
+                    serverSettings.features.coverArt.provider = provider;
+                }
+            }
+            if (typeof msg.features.coverArt.memoryPoolMB === "number") {
+                serverSettings.features.coverArt.memoryPoolMB = Math.max(1, Math.round(msg.features.coverArt.memoryPoolMB));
+            }
+            lib.saveSettings(serverSettings);
+            coverArt.applySettings(serverSettings);
+            sockets.getServerSettings(io, serverSettings);
+        }
+        if (msg && msg.kiosk) {
+            if (typeof msg.kiosk.host === "string") {
+                serverSettings.kiosk.host = msg.kiosk.host.trim();
+            }
+            if (typeof msg.kiosk.password === "string") {
+                serverSettings.kiosk.password = msg.kiosk.password;
+            }
+            if (typeof msg.kiosk.screenOffDelaySec === "number") {
+                serverSettings.kiosk.screenOffDelaySec = Math.max(0, Math.round(msg.kiosk.screenOffDelaySec));
+            }
+            lib.saveSettings(serverSettings);
+            sockets.getServerSettings(io, serverSettings);
+            kiosk.applySettings(serverSettings);
+            if (serverSettings.kiosk.host) {
+                ensurePolling();
+            } else {
+                stopPollingIfIdle();
             }
         }
     });

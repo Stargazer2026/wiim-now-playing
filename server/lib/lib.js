@@ -10,10 +10,18 @@
 // Other modules
 const os = require("os");
 const fs = require("fs");
+const path = require("path");
 const log = require("debug")("lib:lib");
 
 // Module constants
-const settingsFile = __dirname + "/../settings.json"; // Make absolute path to server folder
+const settingsFile = path.resolve(process.env.WNP_SETTINGS_PATH || "..", "./settings.json");
+
+const ensureSettingsDirectory = () => {
+    const settingsDir = path.dirname(settingsFile);
+    if (!fs.existsSync(settingsDir)) {
+        fs.mkdirSync(settingsDir, { recursive: true });
+    }
+};
 
 /**
  * This function provides the current date and time in UTC format.
@@ -90,6 +98,7 @@ const getSettings = (serverSettings) => {
         }
         if (settings.features) {
             const defaultLyrics = serverSettings.features.lyrics;
+            const defaultCoverArt = serverSettings.features.coverArt;
             serverSettings.features = {
                 ...serverSettings.features,
                 ...settings.features
@@ -106,6 +115,18 @@ const getSettings = (serverSettings) => {
                     };
                 }
             }
+            if (settings.features.coverArt) {
+                serverSettings.features.coverArt = {
+                    ...defaultCoverArt,
+                    ...settings.features.coverArt
+                };
+            }
+        }
+        if (settings.kiosk) {
+            serverSettings.kiosk = {
+                ...serverSettings.kiosk,
+                ...settings.kiosk
+            };
         }
     }
     catch { // Not found, create a settings file
@@ -123,10 +144,12 @@ const getSettings = (serverSettings) => {
  */
 const saveSettings = (serverSettings) => {
     log("fs", "Saving settings to:", settingsFile);
+    ensureSettingsDirectory();
 
     const settingsToStore = {
         "selectedDevice": serverSettings.selectedDevice,
-        "features": serverSettings.features
+        "features": serverSettings.features,
+        "kiosk": serverSettings.kiosk
     };
     log("fs", "Settings to store", settingsToStore);
 

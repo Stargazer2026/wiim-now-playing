@@ -10,7 +10,6 @@ const lyricsCache = require("./lyricsCache.js");
 const LRCLIB_BASE_URL = "https://lrclib.net";
 const NEGATIVE_CACHE_TTL_MS = 10 * 60 * 1000;
 const MATCH_SCORE_THRESHOLD = 70;
-const PREFETCH_BATCH_LIMIT = 20;
 const PREFETCH_CONCURRENCY_FALLBACK = 4;
 const PREFETCH_MODES = {
     OFF: "off",
@@ -429,12 +428,6 @@ const getLyricsForMetadata = async (io, deviceInfo, serverSettings) => {
         return;
     }
 
-    const trackSource = (metadata.TrackSource || "").toLowerCase();
-    if (trackSource !== "tidal") {
-        clearLyrics(io, deviceInfo, "not-supported-source", null, null, diagnostics);
-        return;
-    }
-
     const signature = buildSignatureFromMetadata(metadata);
     if (!signature) {
         clearLyrics(io, deviceInfo, "missing-signature", null, null, diagnostics);
@@ -618,8 +611,7 @@ const fetchPrefetchCandidates = async (params, serverSettings) => {
         return [];
     }
     return results
-        .filter((candidate) => candidate && candidate.syncedLyrics && !candidate.instrumental)
-        .slice(0, PREFETCH_BATCH_LIMIT);
+        .filter((candidate) => candidate && candidate.syncedLyrics && !candidate.instrumental);
 };
 
 const runWithConcurrency = async (items, limit, handler) => new Promise((resolve) => {
@@ -809,16 +801,6 @@ const prefetchLyricsForMetadata = async (io, metadata, serverSettings, options =
         setLyricsPrefetchState(io, {
             status: "skipped",
             reason: options.reason || (!enabled ? "disabled" : "missing-metadata")
-        });
-        return;
-    }
-
-    const trackSource = (metadata.TrackSource || "").toLowerCase();
-    if (trackSource !== "tidal") {
-        setLyricsPrefetchState(io, {
-            status: "skipped",
-            reason: "not-supported-source",
-            trackSource
         });
         return;
     }

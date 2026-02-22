@@ -114,6 +114,8 @@ If you want to use [Docker](https://www.docker.com/) instead of 'bare metal' on 
 
 `docker-compose up -d --build`
 
+By default the server stores settings in `server/settings.json`. You can override that path via the `WNP_SETTINGS_PATH` environment variable (for example `/var/lib/wiim-now-playing`) to keep persistent data outside the application directory.
+
 > Please note that this will **only** run well on a Linux machine. The Windows version of Docker does not support device discovery over SSDP and thus will not scan the network for WiiM devices. You may need to spin up an entire Linux VM for this to work, which defeats the purpose of Docker.  
 See: <https://github.com/cvdlinden/wiim-now-playing/pull/4>
 

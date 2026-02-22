@@ -11,7 +11,7 @@ WNP.s = {
     locPort: (location.port && location.port != "80" && location.port != "1234") ? location.port : "80",
     rndAlbumArtUri: "./img/fake-album-1.jpg",
     // Device selection
-    aDeviceUI: ["btnPrev", "btnPlay", "btnNext", "btnRefresh", "selDeviceChoices", "devName", "devNameHolder", "mediaTitle", "mediaSubTitle", "mediaArtist", "mediaAlbum", "mediaBitRate", "mediaBitDepth", "mediaSampleRate", "mediaQualityIdent", "devVol", "btnRepeat", "btnShuffle", "progressPlayed", "progressLeft", "progressPercent", "mediaSource", "albumArt", "bgAlbumArtBlur", "btnDevSelect", "oDeviceList", "btnDevPreset", "oPresetList", "btnDevVolume", "rVolume", "lyricsContainer", "lyricsPrev", "lyricsCurrent", "lyricsNext"],
+    aDeviceUI: ["wnpApp", "btnPrev", "btnPlay", "btnNext", "btnRefresh", "selDeviceChoices", "devName", "devNameHolder", "mediaTitle", "mediaSubTitle", "mediaArtist", "mediaAlbum", "mediaBitRate", "mediaBitDepth", "mediaSampleRate", "mediaQualityIdent", "devVol", "btnRepeat", "btnShuffle", "progressPlayed", "progressLeft", "progressPercent", "mediaSource", "albumArt", "bgAlbumArtBlur", "btnDevSelect", "oDeviceList", "btnDevPreset", "oPresetList", "btnDevVolume", "rVolume", "lyricsContainer", "lyricsPrev", "lyricsCurrent", "lyricsNext",  "mediaTitleArtist", "mediaTitleCompact", "mediaArtistCompact", "mediaAlbumQuality", "mediaAlbumCompact", "mediaQualityCompact", "mediaSourceCompact", "mediaSourceFooter"],
     // Server actions to be used in the app
     aServerUI: [
         "btnReboot",
@@ -26,7 +26,13 @@ WNP.s = {
         "lyricsOffsetMs",
         "chkLyricsCacheEnabled",
         "lyricsCacheSizeMB",
-        "lyricsPrefetchMode"
+        "lyricsPrefetchMode",
+        "chkCoverArtEnabled",
+        "selCoverArtProvider",
+        "coverArtMemoryPoolMB",
+        "kioskHost",
+        "kioskPassword",
+        "kioskDelaySec"
     ],
 };
 
@@ -42,7 +48,10 @@ WNP.d = {
     lyrics: null, // Current lyrics payload
     lyricsIndex: null, // Current lyrics line index
     lyricsLines: [], // Parsed lyrics lines
-    lyricsCookieApplied: false // Track if cookie setting has been applied
+    lyricsCookieApplied: false, // Track if cookie setting has been applied
+    currentTrackKey: null,
+    currentTrackCoverLocked: false,
+    pendingTrackCoverUri: null
 };
 
 // Reference placeholders.
@@ -278,6 +287,103 @@ WNP.setUIListeners = function () {
         });
     }
 
+    if (this.r.chkCoverArtEnabled) {
+        this.r.chkCoverArtEnabled.addEventListener("change", function () {
+            socket.emit("server-settings-update", {
+                features: {
+                    coverArt: {
+                        enabled: this.checked
+                    }
+                }
+            });
+        });
+    }
+
+    if (this.r.selCoverArtProvider) {
+        this.r.selCoverArtProvider.addEventListener("change", function () {
+            socket.emit("server-settings-update", {
+                features: {
+                    coverArt: {
+                        provider: this.value
+                    }
+                }
+            });
+        });
+    }
+
+    if (this.r.coverArtMemoryPoolMB) {
+        this.r.coverArtMemoryPoolMB.addEventListener("change", function () {
+            var poolValue = parseInt(this.value, 10);
+            if (isNaN(poolValue) || poolValue < 1) {
+                poolValue = 1;
+            }
+            socket.emit("server-settings-update", {
+                features: {
+                    coverArt: {
+                        memoryPoolMB: poolValue
+                    }
+                }
+            });
+        });
+    }
+
+    if (this.r.kioskHost) {
+        this.r.kioskHost.addEventListener("change", function () {
+            socket.emit("server-settings-update", {
+                kiosk: {
+                    host: this.value
+                }
+            });
+        });
+    }
+
+    if (this.r.kioskPassword) {
+        this.r.kioskPassword.addEventListener("change", function () {
+            socket.emit("server-settings-update", {
+                kiosk: {
+                    password: this.value
+                }
+            });
+        });
+    }
+
+    if (this.r.kioskDelaySec) {
+        this.r.kioskDelaySec.addEventListener("change", function () {
+            var delayValue = parseInt(this.value, 10);
+            if (isNaN(delayValue) || delayValue < 0) {
+                delayValue = 0;
+            }
+            socket.emit("server-settings-update", {
+                kiosk: {
+                    screenOffDelaySec: delayValue
+                }
+            });
+        });
+    }
+
+    if (this.r.albumArt) {
+        this.r.albumArt.addEventListener("load", function () {
+            if (!WNP.d.pendingTrackCoverUri) {
+                return;
+            }
+            if (WNP.normalizeUri(this.src) === WNP.d.pendingTrackCoverUri) {
+                WNP.d.currentTrackCoverLocked = true;
+                WNP.d.pendingTrackCoverUri = null;
+            }
+        });
+
+        this.r.albumArt.addEventListener("error", function () {
+            if (!WNP.d.pendingTrackCoverUri) {
+                return;
+            }
+            if (WNP.normalizeUri(this.src) === WNP.d.pendingTrackCoverUri) {
+                // Keep unlocked so the next metadata update can retry the same track.
+                WNP.d.currentTrackCoverLocked = false;
+                WNP.d.pendingTrackCoverUri = null;
+            }
+        });
+    }
+
 };
 
 /**
@@ -362,6 +468,16 @@ WNP.setSocketDefinitions = function () {
             }
         }
 
+        if (WNP.r.chkCoverArtEnabled) {
+            WNP.r.chkCoverArtEnabled.checked = Boolean(msg && msg.features && msg.features.coverArt && msg.features.coverArt.enabled);
+        }
+        if (WNP.r.selCoverArtProvider) {
+            WNP.r.selCoverArtProvider.value = (msg && msg.features && msg.features.coverArt && msg.features.coverArt.provider) ? msg.features.coverArt.provider : "caa";
+        }
+        if (WNP.r.coverArtMemoryPoolMB) {
+            WNP.r.coverArtMemoryPoolMB.value = (msg && msg.features && msg.features.coverArt && typeof msg.features.coverArt.memoryPoolMB === "number") ? msg.features.coverArt.memoryPoolMB : 100;
+        }
+
         if (WNP.r.chkLyricsEnabled && !WNP.d.lyricsCookieApplied) {
             var cookieValue = WNP.getCookie("wnpLyricsEnabled");
             if (cookieValue !== null) {
@@ -380,6 +496,19 @@ WNP.setSocketDefinitions = function () {
                 WNP.setCookie("wnpLyricsEnabled", WNP.r.chkLyricsEnabled.checked, 180);
             }
             WNP.d.lyricsCookieApplied = true;
+        }
+
+        if (WNP.r.kioskHost) {
+            var kioskHost = (msg && msg.kiosk && msg.kiosk.host) ? msg.kiosk.host : "";
+            WNP.r.kioskHost.value = kioskHost;
+        }
+        if (WNP.r.kioskPassword) {
+            var kioskPassword = (msg && msg.kiosk && msg.kiosk.password) ? msg.kiosk.password : "";
+            WNP.r.kioskPassword.value = kioskPassword;
+        }
+        if (WNP.r.kioskDelaySec) {
+            var kioskDelaySec = (msg && msg.kiosk && typeof msg.kiosk.screenOffDelaySec === "number") ? msg.kiosk.screenOffDelaySec : 300;
+            WNP.r.kioskDelaySec.value = kioskDelaySec;
         }
 
     });
@@ -536,17 +665,19 @@ WNP.setSocketDefinitions = function () {
         var playMedium = (msg.PlayMedium) ? msg.PlayMedium : "";
         var trackSource = (msg.TrackSource) ? msg.TrackSource : "";
         var sourceIdent = WNP.getSourceIdent(playMedium, trackSource);
+        var sourceAlt = playMedium + ": " + trackSource;
+        var compactSourceText = trackSource || playMedium;
         // Did the source ident change...?
         if (sourceIdent !== WNP.d.prevSourceIdent) {
             if (sourceIdent !== "") {
                 var identImg = document.createElement("img");
                 identImg.src = sourceIdent;
-                identImg.alt = playMedium + ": " + trackSource;
-                identImg.title = playMedium + ": " + trackSource;
+                identImg.alt = sourceAlt;
+                identImg.title = sourceAlt;
                 mediaSource.innerHTML = identImg.outerHTML;
             }
             else {
-                mediaSource.innerText = playMedium + ": " + trackSource;
+                mediaSource.innerText = sourceAlt;
             }
             WNP.d.prevSourceIdent = sourceIdent; // Remember the last Source Ident
         }
@@ -578,8 +709,9 @@ WNP.setSocketDefinitions = function () {
         var songQuality = (msg.trackMetaData && msg.trackMetaData["song:quality"]) ? msg.trackMetaData["song:quality"] : "";
         var songActualQuality = (msg.trackMetaData && msg.trackMetaData["song:actualQuality"]) ? msg.trackMetaData["song:actualQuality"] : "";
         var qualiIdent = WNP.getQualityIdent(songQuality, songActualQuality, songBitrate, songBitDepth, songSampleRate);
-        if (qualiIdent !== "") {
-            WNP.r.mediaQualityIdent.innerText = qualiIdent;
+        var qualiIdentLower = (qualiIdent || "").toLowerCase();
+        if (qualiIdentLower !== "") {
+            WNP.r.mediaQualityIdent.innerText = qualiIdentLower;
             WNP.r.mediaQualityIdent.title = "Quality: " + songQuality + ", " + songActualQuality;
         }
         else {
@@ -589,22 +721,100 @@ WNP.setSocketDefinitions = function () {
             WNP.r.mediaQualityIdent.innerHTML = identId.outerHTML;
         }
 
+        var isTvMode = !!(WNP.r.wnpApp && WNP.r.wnpApp.classList && WNP.r.wnpApp.classList.contains("tv-mode"));
+        if (isTvMode) {
+            var compactStripParen = function (input) {
+                var text = (input || "").toString();
+                var pidx = text.indexOf("(");
+                if (pidx >= 0) {
+                    text = text.substring(0, pidx);
+                }
+                return text.trim();
+            };
+            var displayTitle = compactStripParen(WNP.r.mediaTitle.innerText);
+            var displayArtist = compactStripParen(WNP.r.mediaArtist.innerText);
+
+            if (WNP.r.mediaTitleCompact && WNP.r.mediaTitleArtist) {
+                WNP.r.mediaTitleCompact.innerText = displayTitle;
+                WNP.r.mediaTitleArtist.style.display = displayTitle ? "" : "none";
+            }
+            if (WNP.r.mediaArtistCompact && WNP.r.mediaAlbumQuality) {
+                WNP.r.mediaArtistCompact.innerText = displayArtist;
+                WNP.r.mediaAlbumQuality.style.display = displayArtist ? "" : "none";
+            }
+            if (WNP.r.mediaQualityCompact) {
+                var compactQuality = qualiIdentLower || "";
+                WNP.r.mediaQualityCompact.innerText = compactQuality;
+                WNP.r.mediaQualityCompact.style.display = compactQuality ? "" : "none";
+            }
+            if (WNP.r.mediaSourceCompact) {
+                var compactSource = compactSourceText || "";
+                WNP.r.mediaSourceCompact.innerText = compactSource;
+                WNP.r.mediaSourceCompact.title = sourceAlt;
+                WNP.r.mediaSourceCompact.style.display = compactSource ? "" : "none";
+            }
+            if (WNP.r.mediaSourceFooter) {
+                var footerSource = compactSourceText || "";
+                WNP.r.mediaSourceFooter.innerText = footerSource;
+                WNP.r.mediaSourceFooter.title = sourceAlt;
+                WNP.r.mediaSourceFooter.style.display = footerSource ? "inline-block" : "none";
+            }
+        }
+        else {
+            if (WNP.r.mediaTitleCompact && WNP.r.mediaArtistCompact && WNP.r.mediaTitleArtist) {
+                WNP.setCompactLine(
+                    WNP.r.mediaTitleArtist,
+                    WNP.r.mediaTitleCompact,
+                    WNP.r.mediaArtistCompact,
+                    null,
+                    WNP.r.mediaTitle.innerText,
+                    WNP.r.mediaArtist.innerText
+                );
+            }
+            if (WNP.r.mediaAlbumCompact && WNP.r.mediaQualityCompact && WNP.r.mediaSourceCompact && WNP.r.mediaAlbumQuality) {
+                var compactAlbum = WNP.r.mediaAlbum.innerText;
+                var compactQuality = qualiIdentLower || "";
+                var compactSource = compactSourceText || "";
+                WNP.r.mediaAlbumCompact.innerText = compactAlbum;
+                WNP.r.mediaAlbumCompact.style.display = compactAlbum ? "" : "none";
+                WNP.r.mediaQualityCompact.innerText = compactQuality;
+                WNP.r.mediaQualityCompact.style.display = compactQuality ? "" : "none";
+                WNP.r.mediaSourceCompact.innerText = compactSource;
+                WNP.r.mediaSourceCompact.title = sourceAlt;
+                WNP.r.mediaSourceCompact.style.display = compactSource ? "" : "none";
+                WNP.r.mediaAlbumQuality.style.display = (compactAlbum || compactQuality || compactSource) ? "" : "none";
+            }
+        }
+
         // Pre-process Album Art uri, if any is available from the metadata.
         var albumArtUriRaw = (msg.trackMetaData && msg.trackMetaData["upnp:albumArtURI"]) ? msg.trackMetaData["upnp:albumArtURI"] : "";
         var albumArtUri = WNP.checkAlbumArtURI(albumArtUriRaw, msg.metadataTimeStamp);
 
-        // Set Album Art, only if the track changed and the URI changed
-        var trackChanged = false;
+        // Set Album Art with stable behavior per track.
+        // 1) On track change we always set once (device art if available, otherwise placeholder).
+        // 2) If the same track later receives a valid device art URI, set once and lock.
         var currentTrackInfo = WNP.r.mediaTitle.innerText + "|" + WNP.r.mediaSubTitle.innerText + "|" + WNP.r.mediaArtist.innerText + "|" + WNP.r.mediaAlbum.innerText;
-        var currentAlbumArt = WNP.r.albumArt.src;
         if (WNP.d.prevTrackInfo !== currentTrackInfo) {
-            trackChanged = true;
             WNP.d.prevTrackInfo = currentTrackInfo; // Remember the last track info
+            var trackArtist = (msg.trackMetaData && msg.trackMetaData["upnp:artist"]) ? msg.trackMetaData["upnp:artist"] : "";
+            var trackAlbum = (msg.trackMetaData && msg.trackMetaData["upnp:album"]) ? msg.trackMetaData["upnp:album"] : "";
+            var trackTitle = (msg.trackMetaData && msg.trackMetaData["dc:title"]) ? msg.trackMetaData["dc:title"] : "";
+            WNP.d.currentTrackKey = (trackArtist + "|" + trackAlbum + "|" + trackTitle).trim().toLowerCase();
+            WNP.d.currentTrackCoverLocked = false;
+            WNP.d.pendingTrackCoverUri = null;
             console.log("WNP", "Track changed:", currentTrackInfo);
             WNP.clearLyrics();
-        }
-        if (trackChanged && currentAlbumArt != albumArtUri) {
-            WNP.setAlbumArt(albumArtUri);
+            if (albumArtUriRaw) {
+                WNP.trySetTrackCover(albumArtUri);
+            }
+            else {
+                WNP.setAlbumArt(albumArtUri);
+            }
+        } else if (!WNP.d.currentTrackCoverLocked && albumArtUriRaw) {
+            // Same song, but now a valid device URI is available: switch exactly once.
+            if (WNP.r.albumArt.src !== albumArtUri) {
+                WNP.trySetTrackCover(albumArtUri);
+            }
         }
 
         // Device volume
@@ -654,6 +864,17 @@ WNP.setSocketDefinitions = function () {
             WNP.r.btnShuffle.className = "btn btn-outline-light";
         }
 
+    });
+
+    socket.on("cover-art-resolved", function (msg) {
+        if (!msg || !msg.cacheKey || !WNP.d.currentTrackKey || msg.trackKey !== WNP.d.currentTrackKey) {
+            return;
+        }
+        if (WNP.d.currentTrackCoverLocked) {
+            return;
+        }
+        var coverUri = WNP.buildResolvedCoverUri(msg.cacheKey);
+        WNP.trySetTrackCover(coverUri);
     });
 
     // On lyrics
@@ -999,6 +1220,31 @@ WNP.setLyricsLines = function (prevLine, currentLine, nextLine) {
 };
 
 /**
+ * Set compact media line values.
+ * @param {HTMLElement} container - Container element for the line.
+ * @param {HTMLElement} leftEl - Left text element.
+ * @param {HTMLElement} rightEl - Right text element.
+ * @param {HTMLElement} sepEl - Separator element.
+ * @param {string} leftValue - Left text.
+ * @param {string} rightValue - Right text.
+ * @returns {undefined}
+ */
+WNP.setCompactLine = function (container, leftEl, rightEl, sepEl, leftValue, rightValue) {
+    if (!container || !leftEl || !rightEl) {
+        return;
+    }
+    leftEl.innerText = leftValue || "";
+    rightEl.innerText = rightValue || "";
+    var hasLeft = Boolean(leftValue);
+    var hasRight = Boolean(rightValue);
+    if (sepEl) {
+        sepEl.style.display = (hasLeft && hasRight) ? "" : "none";
+    }
+    rightEl.style.display = hasRight ? "" : "none";
+    container.style.display = (hasLeft || hasRight) ? "" : "none";
+};
+
+/**
  * Get lyrics offset (in ms) from server settings.
  * @returns {number}
  */
@@ -1041,6 +1287,29 @@ WNP.getCookie = function (name) {
         }
     }
     return null;
+};
+
+WNP.buildResolvedCoverUri = function (cacheKey) {
+    if (!cacheKey) {
+        return WNP.s.rndAlbumArtUri;
+    }
+    if (WNP.s.locPort != "80") {
+        return "http://" + WNP.s.locHostname + ":" + WNP.s.locPort + "/cover-art/" + encodeURIComponent(cacheKey);
+    }
+    return "http://" + WNP.s.locHostname + "/cover-art/" + encodeURIComponent(cacheKey);
+};
+
+WNP.normalizeUri = function (uri) {
+    try {
+        return new URL(uri, window.location.href).href;
+    } catch {
+        return uri;
+    }
+};
+
+WNP.trySetTrackCover = function (imgUri) {
+    WNP.d.pendingTrackCoverUri = WNP.normalizeUri(imgUri);
+    WNP.setAlbumArt(imgUri);
 };
 
 /**
