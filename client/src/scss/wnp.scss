@@ -575,6 +575,20 @@
             grid-template-rows: 1.4fr .6fr 56px;
         }
 
+        @media (orientation: portrait) {
+            .wnpContainer {
+                grid-template-rows: 1.12fr .88fr 56px;
+            }
+
+            .wnpMediaInfo {
+                margin-top: -10px;
+            }
+
+            #albumArt {
+                object-fit: cover;
+            }
+        }
+
         // Small devices (landscape phones, 576px and up)
         @media (min-width: 576px) and (orientation: landscape) {
 
