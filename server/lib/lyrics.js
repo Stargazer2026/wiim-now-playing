@@ -6,6 +6,7 @@
 const https = require("https");
 const log = require("debug")("lib:lyrics");
 const lyricsCache = require("./lyricsCache.js");
+const lyricsFailures = require("./lyricsFailures.js");
 
 const LRCLIB_BASE_URL = "https://lrclib.net";
 const NEGATIVE_CACHE_TTL_MS = 10 * 60 * 1000;
@@ -47,8 +48,10 @@ const fetchJsonWithTiming = async (path, serverSettings, diagnostics, label) => 
         if (diagnostics?.requests) {
             diagnostics.requests.push({
                 endpoint: label,
+                path,
                 durationMs: Date.now() - startedAt,
-                result: result ? "hit" : "miss"
+                result: result ? "hit" : "miss",
+                response: result || null
             });
         }
         return result;
@@ -56,6 +59,7 @@ const fetchJsonWithTiming = async (path, serverSettings, diagnostics, label) => 
         if (diagnostics?.requests) {
             diagnostics.requests.push({
                 endpoint: label,
+                path,
                 durationMs: Date.now() - startedAt,
                 result: "error",
                 error: error.message
@@ -474,10 +478,35 @@ const getLyricsForMetadata = async (io, deviceInfo, serverSettings) => {
         };
     };
 
+    const recordLookupFailure = (reason, diagnosticsSnapshot) => {
+        if (deviceInfo.lyrics && deviceInfo.lyrics.trackKey === trackKey && deviceInfo.lyrics.status === reason) {
+            return;
+        }
+
+        const lookupParams = new URLSearchParams({
+            track_name: signature.trackName,
+            artist_name: signature.artistName,
+            album_name: signature.albumName,
+            duration: signature.duration
+        });
+        lyricsFailures.recordFailure({
+            reason,
+            signature,
+            normalized: {
+                trackName: normalizeText(signature.trackName),
+                artistName: normalizeText(signature.artistName),
+                albumName: normalizeAlbum(signature.albumName)
+            },
+            queryString: lookupParams.toString(),
+            requests: diagnosticsSnapshot?.requests || [],
+            diagnostics: diagnosticsSnapshot || null
+        }, serverSettings);
+    };
+
     try {
         const payload = await fetchLyricsForSignature(signature, trackKey, serverSettings, diagnostics);
         diagnostics.totalMs = Date.now() - diagnostics.requestedAt;
-        if (payload) {
+        if (payload && payload.status === "ok") {
             setLyricsState(io, deviceInfo, {
                 ...payload,
                 diagnostics: snapshotDiagnostics()
@@ -487,11 +516,17 @@ const getLyricsForMetadata = async (io, deviceInfo, serverSettings) => {
             });
             return;
         }
-        clearLyrics(io, deviceInfo, "not-found", signature, trackKey, snapshotDiagnostics());
+
+        const failureReason = payload && payload.status ? payload.status : "not-found";
+        const diagnosticsSnapshot = snapshotDiagnostics();
+        recordLookupFailure(failureReason, diagnosticsSnapshot);
+        clearLyrics(io, deviceInfo, failureReason, signature, trackKey, diagnosticsSnapshot);
     } catch (error) {
         log("LRCLIB error:", error.message);
         diagnostics.totalMs = Date.now() - diagnostics.requestedAt;
-        clearLyrics(io, deviceInfo, "error", signature, trackKey, snapshotDiagnostics());
+        const diagnosticsSnapshot = snapshotDiagnostics();
+        recordLookupFailure("error", diagnosticsSnapshot);
+        clearLyrics(io, deviceInfo, "error", signature, trackKey, diagnosticsSnapshot);
     }
 };
 

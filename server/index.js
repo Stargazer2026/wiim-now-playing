@@ -32,6 +32,7 @@ const shell = require("./lib/shell.js"); // Shell command functionality
 const lib = require("./lib/lib.js"); // Generic functionality
 const lyrics = require("./lib/lyrics.js"); // Lyrics functionality
 const lyricsCache = require("./lib/lyricsCache.js");
+const lyricsFailures = require("./lib/lyricsFailures.js");
 const coverArt = require("./lib/coverArt.js");
 const kiosk = require("./lib/kiosk.js");
 const log = require("debug")("index"); // See README.md on debugging
@@ -188,6 +189,18 @@ app.get("/res", limiter, function (req, res) { // Resolution test page
 });
 app.get("/assets", limiter, function (req, res) { // Assets test page
     res.sendFile(__dirname + "/public/assets.html");
+});
+app.get("/analyze", limiter, function (req, res) { // Lyrics analysis page
+    res.sendFile(__dirname + "/public/analyze.html");
+});
+
+app.get("/api/lyrics-failures", limiter, function (req, res) {
+    const limit = parseInt(req.query.limit, 10) || 250;
+    const entries = lyricsFailures.listFailures(serverSettings, limit);
+    res.json({
+        total: entries.length,
+        entries
+    });
 });
 
 // Proxy https album art requests through this app, because this could be a https request with a self signed certificate.

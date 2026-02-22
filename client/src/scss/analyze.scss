@@ -1,0 +1,32 @@
+body {
+    background: #f7f9fc;
+    color: #102030;
+}
+
+.analyze-page {
+    min-height: 100vh;
+}
+
+.failure-entry {
+    background: #ffffff;
+    border: 1px solid #dce5ef;
+}
+
+.query-string,
+.request-entry pre {
+    background: #f3f6fa;
+    border: 1px solid #d5e0ec;
+    color: #112a42;
+    border-radius: 6px;
+    padding: 10px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.request-entry {
+    background: #fbfdff;
+}
+
+code {
+    color: #0b4d7a;
+}
