@@ -581,7 +581,19 @@
             }
 
             .wnpMediaInfo {
+                display: flex;
+                flex-direction: column;
                 margin-top: -10px;
+
+                .media-compact-block {
+                    padding-left: 0;
+                    padding-right: 0;
+                }
+
+                .wnpLyrics {
+                    margin-top: auto;
+                    margin-bottom: 8px;
+                }
             }
 
             #albumArt {
