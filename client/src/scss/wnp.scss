@@ -572,12 +572,18 @@
         /* Layout - CSS Grid */
         // Mobile portrait mode as default
         .wnpContainer {
-            grid-template-rows: 1.4fr .6fr 56px;
+            grid-template-rows: minmax(0, 1.18fr) minmax(0, .82fr);
+            grid-template-areas:
+                "wnpAlbumArt"
+                "wnpMediaInfo";
         }
 
         @media (orientation: portrait) {
             .wnpContainer {
-                grid-template-rows: minmax(0, 1.28fr) minmax(0, .72fr) 56px;
+                grid-template-rows: minmax(0, 1.18fr) minmax(0, .82fr);
+                grid-template-areas:
+                    "wnpAlbumArt"
+                    "wnpMediaInfo";
             }
 
             .wnpAlbumArt {
@@ -614,9 +620,6 @@
                 object-position: center;
             }
 
-            .wnpFooter {
-                transform: translateY(-15px);
-            }
         }
 
         // Small devices (landscape phones, 576px and up)
@@ -624,10 +627,8 @@
 
             .wnpContainer {
                 grid-template-columns: .75fr 1.25fr;
-                grid-template-rows: 1fr 46px;
-                grid-template-areas:
-                    "wnpAlbumArt wnpMediaInfo"
-                    "wnpFooter wnpFooter";
+                grid-template-rows: 1fr;
+                grid-template-areas: "wnpAlbumArt wnpMediaInfo";
             }
 
         }
@@ -659,6 +660,10 @@
                 text-align: left;
             }
 
+        }
+
+        .wnpFooter {
+            display: none;
         }
 
         /* Footer TV mode */
