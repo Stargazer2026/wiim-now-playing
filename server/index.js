@@ -257,16 +257,14 @@ io.on("connection", (socket) => {
         // Start polling the selected device
         ensurePolling();
     }
-    else if (io.sockets.sockets.size >= 1) {
-        // If new client, send current state and metadata 'immediately'
-        // When sending directly after a reboot things get wonky
-        // setTimeout(() => {
-        socket.emit("state", deviceInfo.state);
-        socket.emit("metadata", deviceInfo.metadata);
-        if (deviceInfo.lyrics) {
-            socket.emit("lyrics", deviceInfo.lyrics);
-        }
-        // }, serverSettings.timeouts.immediate)
+
+    // Also send the latest known state for newly connected clients.
+    // This includes the very first connected client, which otherwise
+    // would wait for the next polling cycle before seeing metadata/lyrics.
+    socket.emit("state", deviceInfo.state);
+    socket.emit("metadata", deviceInfo.metadata);
+    if (deviceInfo.lyrics) {
+        socket.emit("lyrics", deviceInfo.lyrics);
     }
 
     /**
