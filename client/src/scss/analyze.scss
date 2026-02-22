@@ -30,3 +30,31 @@ body {
 code {
     color: #0b4d7a;
 }
+
+.failure-toggle {
+    > summary {
+        list-style: none;
+        cursor: pointer;
+        display: block;
+        position: relative;
+        padding-right: 44px;
+    }
+
+    > summary::-webkit-details-marker {
+        display: none;
+    }
+
+    > summary::after {
+        content: "▸";
+        position: absolute;
+        right: 18px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #5e748a;
+        font-size: 1rem;
+    }
+
+    &[open] > summary::after {
+        content: "▾";
+    }
+}
