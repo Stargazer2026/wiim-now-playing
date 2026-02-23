@@ -68,8 +68,8 @@ let serverSettings = { // Placeholder for current server settings
     "os": lib.getOS(), // Initially grab the environment we are running in. Things may not have settled yet, so we update this later.
     "timeouts": {
         "immediate": 250, // Timeout for 'immediate' updates in milliseconds. Quarter of a second.
-        "state": 1000, // Timeout for state updates in milliseconds. Every second.
-        "metadata": 4 * 1000, // Timeout for metadata updates in milliseconds. Every 4 seconds.
+        "state": 4 * 1000, // Timeout for state updates in milliseconds. Adaptive: 1s with clients, 4s when idle.
+        "metadata": 4 * 1000, // Timeout for metadata updates in milliseconds. Adaptive: 1s with clients, 4s when idle.
         "rescan": 10 * 1000 // Timeout for possible rescan of devices in milliseconds. Every 10 seconds.
     },
     "features": {
@@ -106,22 +106,54 @@ let serverSettings = { // Placeholder for current server settings
 let pollState = null; // For the renderer state
 let pollMetadata = null; // For the renderer metadata
 
-const ensurePolling = () => {
-    if (pollState || pollMetadata) {
-        return;
-    }
+const POLL_INTERVAL_ACTIVE_MS = 1000;
+const POLL_INTERVAL_IDLE_MS = 4 * 1000;
+
+const setPollingInterval = (intervalMs) => {
+    serverSettings.timeouts.state = intervalMs;
+    serverSettings.timeouts.metadata = intervalMs;
+};
+
+const stopPolling = () => {
+    upnp.stopPolling(pollState, "pollState");
+    upnp.stopPolling(pollMetadata, "pollMetadata");
+    pollState = null;
+    pollMetadata = null;
+};
+
+const startPolling = () => {
     pollMetadata = upnp.startMetadata(io, deviceInfo, serverSettings);
     pollState = upnp.startState(io, deviceInfo, serverSettings);
 };
 
-const stopPollingIfIdle = () => {
+const syncPolling = () => {
+    const clientCount = io.sockets.sockets.size;
+    const hasConnectedClients = clientCount > 0;
     const kioskEnabled = Boolean(serverSettings.kiosk && serverSettings.kiosk.host);
-    if (io.sockets.sockets.size === 0 && !kioskEnabled) {
-        log("No sockets are connected!");
-        upnp.stopPolling(pollState, "pollState");
-        upnp.stopPolling(pollMetadata, "pollMetadata");
-        pollState = null;
-        pollMetadata = null;
+    const shouldPoll = hasConnectedClients || kioskEnabled;
+    const desiredInterval = hasConnectedClients ? POLL_INTERVAL_ACTIVE_MS : POLL_INTERVAL_IDLE_MS;
+    const intervalChanged = serverSettings.timeouts.state !== desiredInterval || serverSettings.timeouts.metadata !== desiredInterval;
+
+    if (!shouldPoll) {
+        if (pollState || pollMetadata) {
+            log("No sockets are connected!");
+            stopPolling();
+        }
+        return;
+    }
+
+    if (intervalChanged) {
+        setPollingInterval(desiredInterval);
+    }
+
+    if (!pollState || !pollMetadata) {
+        startPolling();
+        return;
+    }
+
+    if (intervalChanged) {
+        stopPolling();
+        startPolling();
     }
 };
 
@@ -131,9 +163,7 @@ lib.getSettings(serverSettings);
 lyricsCache.startCacheMaintenance(serverSettings);
 coverArt.applySettings(serverSettings);
 kiosk.applySettings(serverSettings);
-if (serverSettings.kiosk && serverSettings.kiosk.host) {
-    ensurePolling();
-}
+syncPolling();
 
 // ===========================================================================
 // Initial SSDP scan for devices.
@@ -271,7 +301,7 @@ io.on("connection", (socket) => {
     log("No. of sockets:", io.sockets.sockets.size);
     if (io.sockets.sockets.size === 1) {
         // Start polling the selected device
-        ensurePolling();
+        syncPolling();
     }
 
     // Also send the latest known state for newly connected clients.
@@ -294,7 +324,7 @@ io.on("connection", (socket) => {
         // On disconnection we check the amount of connected clients.
         // If there is none, the streaming and polling are stopped.
         log("No. of sockets:", io.sockets.sockets.size);
-        stopPollingIfIdle();
+        syncPolling();
 
     });
 
@@ -433,11 +463,7 @@ io.on("connection", (socket) => {
             lib.saveSettings(serverSettings);
             sockets.getServerSettings(io, serverSettings);
             kiosk.applySettings(serverSettings);
-            if (serverSettings.kiosk.host) {
-                ensurePolling();
-            } else {
-                stopPollingIfIdle();
-            }
+            syncPolling();
         }
     });
 
