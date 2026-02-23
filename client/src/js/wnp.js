@@ -731,8 +731,12 @@ WNP.setSocketDefinitions = function () {
             WNP.r.mediaQualityIdent.innerHTML = identId.outerHTML;
         }
 
-        var isTvMode = !!(WNP.r.wnpApp && WNP.r.wnpApp.classList && WNP.r.wnpApp.classList.contains("tv-mode"));
-        if (isTvMode) {
+        var isCompactTvMode = !!(
+            WNP.r.wnpApp &&
+            WNP.r.wnpApp.classList &&
+            (WNP.r.wnpApp.classList.contains("tv-mode") || WNP.r.wnpApp.classList.contains("portrait-tv-mode"))
+        );
+        if (isCompactTvMode) {
             var compactStripParen = function (input) {
                 var text = (input || "").toString();
                 var pidx = text.indexOf("(");
