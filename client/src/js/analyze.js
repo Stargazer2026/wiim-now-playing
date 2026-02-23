@@ -42,11 +42,43 @@ Analyze.formatTime = function (timestamp) {
     });
 };
 
+Analyze.buildLrclibUrl = function (path) {
+    const safePath = typeof path === "string" ? path.trim() : "";
+    if (!safePath.startsWith("/")) {
+        return null;
+    }
+
+    try {
+        return new URL(safePath, "https://lrclib.net").toString();
+    } catch {
+        return null;
+    }
+};
+
+Analyze.buildFallbackRequestLinks = function (queryString) {
+    if (!queryString || typeof queryString !== "string") {
+        return [];
+    }
+
+    return [
+        { label: "get-cached", path: `/api/get-cached?${queryString}` },
+        { label: "get", path: `/api/get?${queryString}` },
+        { label: "search", path: `/api/search?${queryString}` }
+    ]
+        .map((entry) => ({
+            label: entry.label,
+            url: this.buildLrclibUrl(entry.path)
+        }))
+        .filter((entry) => Boolean(entry.url));
+};
+
 Analyze.renderFailure = function (entry) {
     const queryString = entry.queryString || "-";
     const requests = Array.isArray(entry.requests) ? entry.requests : [];
+    const fallbackLinks = this.buildFallbackRequestLinks(entry.queryString);
 
     const requestList = requests.map((request) => {
+        const lookupUrl = this.buildLrclibUrl(request && request.path);
         const response = request && request.response !== undefined
             ? JSON.stringify(request.response, null, 2)
             : "null";
@@ -54,6 +86,9 @@ Analyze.renderFailure = function (entry) {
             <div class="request-entry border rounded p-2 mb-2">
                 <div><strong>Endpoint:</strong> ${this.escapeHtml(request.endpoint || "-")}</div>
                 <div><strong>Path:</strong> <code>${this.escapeHtml(request.path || "-")}</code></div>
+                ${lookupUrl
+        ? `<div><strong>Open request:</strong> <a href="${this.escapeHtml(lookupUrl)}" target="_blank" rel="noopener noreferrer">${this.escapeHtml(lookupUrl)}</a></div>`
+        : ""}
                 <div><strong>Duration:</strong> ${this.escapeHtml(request.durationMs)} ms</div>
                 <div><strong>Result:</strong> ${this.escapeHtml(request.result || "-")}</div>
                 ${request.error ? `<div><strong>Error:</strong> ${this.escapeHtml(request.error)}</div>` : ""}
@@ -99,7 +134,12 @@ Analyze.renderFailure = function (entry) {
 
                     <div class="mt-3">
                         <h3 class="h6">LRCLIB endpoint responses</h3>
-                        ${requestList || "<div class='text-muted'>No request data available.</div>"}
+                        ${requestList || `
+                            <div class="text-muted">No request data available.</div>
+                            ${fallbackLinks.length
+        ? `<div class="mt-2"><strong>Retry lookup in browser:</strong><ul class="mb-0">${fallbackLinks.map((link) => `<li><a href="${this.escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer">${this.escapeHtml(link.label)}: ${this.escapeHtml(link.url)}</a></li>`).join("")}</ul></div>`
+        : ""}
+                        `}
                     </div>
                 </div>
             </details>
