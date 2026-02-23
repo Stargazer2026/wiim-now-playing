@@ -304,6 +304,15 @@ const fetchLyricsBySignature = async (signature, serverSettings, diagnostics) =>
     });
 
     const isValid = (result) => result && result.syncedLyrics && !result.instrumental;
+    const hasUnsyncedLyrics = (result) => {
+        if (!result) {
+            return false;
+        }
+        if (Array.isArray(result)) {
+            return result.some((item) => item && item.plainLyrics && !item.instrumental);
+        }
+        return Boolean(result.plainLyrics) && !result.instrumental;
+    };
     const tasks = [
         {
             label: "get-cached",
@@ -325,6 +334,7 @@ const fetchLyricsBySignature = async (signature, serverSettings, diagnostics) =>
     }));
 
     const pending = [...tasks];
+    let hadUnsyncedLyrics = false;
     while (pending.length > 0) {
         const settled = await Promise.race(pending.map((task) => task.promise));
         const index = pending.findIndex((task) => task.label === settled.label);
@@ -338,6 +348,13 @@ const fetchLyricsBySignature = async (signature, serverSettings, diagnostics) =>
             }
             return settled.result;
         }
+        if (settled.status === "ok" && hasUnsyncedLyrics(settled.result)) {
+            hadUnsyncedLyrics = true;
+        }
+    }
+
+    if (hadUnsyncedLyrics) {
+        return { reason: "no-synced-lyrics" };
     }
 
     return null;
@@ -604,7 +621,7 @@ const fetchLyricsForSignature = async (signature, trackKey, serverSettings, diag
         }
 
         const payload = {
-            status: "not-found",
+            status: lyrics?.reason === "no-synced-lyrics" ? "no-synced-lyrics" : "not-found",
             provider: "lrclib",
             trackKey,
             signature
