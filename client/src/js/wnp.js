@@ -408,8 +408,34 @@ WNP.setUIListeners = function () {
 WNP.setSocketDefinitions = function () {
     console.log("WNP", "Setting Socket definitions...")
 
+    const shouldReloadForVersionChange = function (msg) {
+        const previousClientVersion = WNP.d.serverSettings && WNP.d.serverSettings.version ? WNP.d.serverSettings.version.client : null;
+        const nextClientVersion = msg && msg.version ? msg.version.client : null;
+
+        if (previousClientVersion && nextClientVersion && previousClientVersion !== nextClientVersion) {
+            return true;
+        }
+
+        const serverVersion = msg && msg.version ? msg.version.server : null;
+        if (serverVersion && nextClientVersion && serverVersion !== nextClientVersion) {
+            const mismatchSignature = serverVersion + "::" + nextClientVersion;
+            if (sessionStorage.getItem("wnp-version-mismatch-reloaded") !== mismatchSignature) {
+                sessionStorage.setItem("wnp-version-mismatch-reloaded", mismatchSignature);
+                return true;
+            }
+        }
+
+        return false;
+    };
+
     // On server settings
     socket.on("server-settings", function (msg) {
+
+        if (shouldReloadForVersionChange(msg)) {
+            console.log("WNP", "Version change detected, reloading UI...");
+            location.reload();
+            return;
+        }
 
         // Store server settings
         WNP.d.serverSettings = msg;
