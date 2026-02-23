@@ -635,6 +635,11 @@ WNP.setSocketDefinitions = function () {
             if (relTimeSeconds <= 1) {
                 WNP.activateLyricsForTrackStart(relTime, timeStampDiff);
             }
+            else {
+                // Lyrics can arrive late (or without a trusted state snapshot) after the song already advanced.
+                // In that case, activate immediately on the first matching state update.
+                WNP.activateLyricsForTrackStart(relTime, timeStampDiff);
+            }
         }
         WNP.updateLyricsProgress(relTime, timeStampDiff);
 
