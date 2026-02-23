@@ -468,6 +468,16 @@ const getLyricsForMetadata = async (io, deviceInfo, serverSettings) => {
         return Number(deviceInfo.metadata.metadataTimeStamp) !== Number(metadataToken);
     };
 
+    const normalizedSignature = {
+        trackName: normalizeText(signature.trackName),
+        artistName: normalizeText(signature.artistName),
+        albumName: normalizeAlbum(signature.albumName)
+    };
+
+    const clearResolvedFailure = () => {
+        lyricsFailures.deleteFailureBySignature(signature, normalizedSignature, serverSettings);
+    };
+
     const cacheLookup = findCachedLyricsForSignature(signature, serverSettings);
     diagnostics.cacheLookupMs = cacheLookup.durationMs;
     diagnostics.cacheStatus = cacheLookup.status;
@@ -479,6 +489,7 @@ const getLyricsForMetadata = async (io, deviceInfo, serverSettings) => {
     if (cacheLookup.status === "hit" && cacheLookup.payload) {
         diagnostics.totalMs = Date.now() - diagnostics.requestedAt;
         log(`Lyrics cache hit (${cacheLookup.durationMs}ms)`, trackKey);
+        clearResolvedFailure();
         setLyricsState(io, deviceInfo, {
             ...cacheLookup.payload,
             diagnostics
@@ -517,11 +528,7 @@ const getLyricsForMetadata = async (io, deviceInfo, serverSettings) => {
         lyricsFailures.recordFailure({
             reason,
             signature,
-            normalized: {
-                trackName: normalizeText(signature.trackName),
-                artistName: normalizeText(signature.artistName),
-                albumName: normalizeAlbum(signature.albumName)
-            },
+            normalized: normalizedSignature,
             queryString: lookupParams.toString(),
             requests: diagnosticsSnapshot?.requests || [],
             diagnostics: diagnosticsSnapshot || null
@@ -536,6 +543,7 @@ const getLyricsForMetadata = async (io, deviceInfo, serverSettings) => {
         }
         diagnostics.totalMs = Date.now() - diagnostics.requestedAt;
         if (payload && payload.status === "ok") {
+            clearResolvedFailure();
             setLyricsState(io, deviceInfo, {
                 ...payload,
                 diagnostics: snapshotDiagnostics()

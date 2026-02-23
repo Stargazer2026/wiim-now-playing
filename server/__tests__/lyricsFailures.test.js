@@ -103,4 +103,42 @@ describe('lyricsFailures.js', () => {
             normalizedAlbumName: 'new album'
         });
     });
+
+
+    it('removes an existing failed lookup when requested', () => {
+        const stored = lyricsFailures.recordFailure({
+            reason: 'not-found',
+            signature: {
+                trackName: 'Delete Song',
+                artistName: 'Delete Artist',
+                albumName: 'Delete Album',
+                duration: 111
+            },
+            normalized: {
+                trackName: 'delete song',
+                artistName: 'delete artist',
+                albumName: 'delete album'
+            },
+            queryString: 'track_name=Delete+Song&artist_name=Delete+Artist&album_name=Delete+Album&duration=111',
+            requests: [],
+            diagnostics: null
+        }, serverSettings);
+        expect(stored).toBe(true);
+
+        const deleted = lyricsFailures.deleteFailureBySignature({
+            trackName: 'Delete Song',
+            artistName: 'Delete Artist',
+            albumName: 'Delete Album',
+            duration: 111
+        }, {
+            trackName: 'delete song',
+            artistName: 'delete artist',
+            albumName: 'delete album'
+        }, serverSettings);
+        expect(deleted).toBe(true);
+
+        const entries = lyricsFailures.listFailures(serverSettings, 100);
+        const deletedEntry = entries.find((entry) => entry.normalizedTrackName === 'delete song');
+        expect(deletedEntry).toBeUndefined();
+    });
 });

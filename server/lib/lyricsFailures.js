@@ -179,6 +179,39 @@ const recordFailure = (entry, serverSettings) => {
     }
 };
 
+
+const deleteFailureBySignature = (signature, normalized, serverSettings) => {
+    if (!signature) {
+        return false;
+    }
+    if (!ensureDb(serverSettings)) {
+        return false;
+    }
+
+    const normalizedTrackName = (normalized && normalized.trackName) || (signature.trackName || "").toString().trim().toLowerCase();
+    const normalizedArtistName = (normalized && normalized.artistName) || (signature.artistName || "").toString().trim().toLowerCase();
+    const normalizedAlbumName = (normalized && normalized.albumName) || (signature.albumName || "").toString().trim().toLowerCase();
+    const wiimDuration = signature.duration || null;
+
+    try {
+        const result = statements.deleteFailureBySignature.run(
+            normalizedTrackName,
+            normalizedArtistName,
+            normalizedAlbumName,
+            wiimDuration,
+            wiimDuration
+        );
+        const changes = typeof result?.changes === "number" ? result.changes : 0;
+        if (changes > 0) {
+            log("Removed resolved failed lyrics lookup", signature.artistName || "", "-", signature.trackName || "");
+        }
+        return true;
+    } catch (error) {
+        log("Unable to remove failed lyrics lookup:", error.message);
+        return false;
+    }
+};
+
 const listFailures = (serverSettings, limit = 200) => {
     if (!ensureDb(serverSettings)) {
         return [];
@@ -196,5 +229,6 @@ const listFailures = (serverSettings, limit = 200) => {
 
 module.exports = {
     recordFailure,
+    deleteFailureBySignature,
     listFailures
 };

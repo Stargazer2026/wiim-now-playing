@@ -11,12 +11,44 @@ jest.mock('../lib/lyricsCache.js', () => ({
     storeLyrics: jest.fn(() => ({ stored: false }))
 }));
 jest.mock('../lib/lyricsFailures.js', () => ({
-    recordFailure: jest.fn()
+    recordFailure: jest.fn(),
+    deleteFailureBySignature: jest.fn()
 }));
 
 const https = require('https');
 const lyrics = require('../lib/lyrics.js');
 const lyricsFailures = require('../lib/lyricsFailures.js');
+
+const buildDeviceInfo = (overrides = {}) => ({
+    metadata: {
+        trackMetaData: {
+            'dc:title': overrides.trackName || 'Rising High',
+            'upnp:artist': overrides.artistName || 'Beyond The Black',
+            'upnp:album': overrides.albumName || 'Break The Silence'
+        },
+        TrackDuration: overrides.trackDuration || '00:03:12',
+        metadataTimeStamp: Date.now()
+    },
+    state: {
+        stateTimeStamp: Date.now()
+    },
+    lyrics: null
+});
+
+const buildServerSettings = () => ({
+    timeouts: { metadata: 4000 },
+    features: {
+        lyrics: {
+            enabled: true,
+            cache: {
+                enabled: false,
+                maxSizeMB: 0,
+                prefetch: 'off'
+            }
+        }
+    },
+    version: { server: 'test' }
+});
 
 describe('lyrics.js failure logging', () => {
     beforeEach(() => {
@@ -36,35 +68,8 @@ describe('lyrics.js failure logging', () => {
 
     it('logs failed lookup when lrclib returns not found', async () => {
         const io = { emit: jest.fn() };
-        const deviceInfo = {
-            metadata: {
-                trackMetaData: {
-                    'dc:title': 'Rising High',
-                    'upnp:artist': 'Beyond The Black',
-                    'upnp:album': 'Break The Silence'
-                },
-                TrackDuration: '00:03:12',
-                metadataTimeStamp: Date.now()
-            },
-            state: {
-                stateTimeStamp: Date.now()
-            },
-            lyrics: null
-        };
-        const serverSettings = {
-            timeouts: { metadata: 4000 },
-            features: {
-                lyrics: {
-                    enabled: true,
-                    cache: {
-                        enabled: false,
-                        maxSizeMB: 0,
-                        prefetch: 'off'
-                    }
-                }
-            },
-            version: { server: 'test' }
-        };
+        const deviceInfo = buildDeviceInfo();
+        const serverSettings = buildServerSettings();
 
         await lyrics.getLyricsForMetadata(io, deviceInfo, serverSettings);
 
@@ -81,6 +86,58 @@ describe('lyrics.js failure logging', () => {
 
         expect(io.emit).toHaveBeenCalledWith('lyrics', expect.objectContaining({
             status: 'not-found'
+        }));
+    });
+
+    it('clears stored failure when lookup succeeds', async () => {
+        https.get.mockImplementation((url, options, cb) => {
+            const res = new EventEmitter();
+            const requestUrl = typeof url === 'string' ? url : '';
+            let payload = '';
+            if (requestUrl.includes('/api/search?')) {
+                res.statusCode = 200;
+                payload = JSON.stringify([
+                    {
+                        id: 99,
+                        trackName: 'Shine and Shade',
+                        artistName: 'Band X',
+                        albumName: 'Album X',
+                        duration: 192,
+                        instrumental: false,
+                        syncedLyrics: '[00:00.00] Test line'
+                    }
+                ]);
+            } else {
+                res.statusCode = 404;
+            }
+
+            process.nextTick(() => {
+                cb(res);
+                if (payload) {
+                    res.emit('data', payload);
+                }
+                res.emit('end');
+            });
+            return {
+                on: jest.fn()
+            };
+        });
+
+        const io = { emit: jest.fn() };
+        const deviceInfo = buildDeviceInfo({
+            trackName: 'Shine and Shade',
+            artistName: 'Band X',
+            albumName: 'Album X',
+            trackDuration: '00:03:12'
+        });
+        const serverSettings = buildServerSettings();
+
+        await lyrics.getLyricsForMetadata(io, deviceInfo, serverSettings);
+
+        expect(lyricsFailures.deleteFailureBySignature).toHaveBeenCalledTimes(1);
+        expect(lyricsFailures.recordFailure).not.toHaveBeenCalled();
+        expect(io.emit).toHaveBeenCalledWith('lyrics', expect.objectContaining({
+            status: 'ok'
         }));
     });
 });
