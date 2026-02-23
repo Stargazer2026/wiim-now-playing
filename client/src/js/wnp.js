@@ -49,6 +49,11 @@ WNP.d = {
     lyricsIndex: null, // Current lyrics line index
     lyricsLines: [], // Parsed lyrics lines
     lyricsCookieApplied: false, // Track if cookie setting has been applied
+    currentLyricsTrackKey: null,
+    currentTrackMetadataTimeStamp: null,
+    pendingLyricsLines: [],
+    pendingLyricsTrackKey: null,
+    waitingForSongStart: false,
     currentTrackKey: null,
     currentTrackCoverLocked: false,
     pendingTrackCoverUri: null
@@ -625,6 +630,12 @@ WNP.setSocketDefinitions = function () {
         WNP.r.progressPercent.children[0].setAttribute("style", "width:" + oPlayerProgress.percent + "%");
 
         WNP.d.lastState = msg;
+        if (WNP.d.waitingForSongStart && WNP.d.pendingLyricsLines.length > 0 && WNP.shouldUseStateForCurrentTrack(msg)) {
+            var relTimeSeconds = WNP.convertToSeconds(relTime);
+            if (relTimeSeconds <= 1) {
+                WNP.activateLyricsForTrackStart(relTime, timeStampDiff);
+            }
+        }
         WNP.updateLyricsProgress(relTime, timeStampDiff);
 
         // Device transport state or play medium changed...?
@@ -807,12 +818,20 @@ WNP.setSocketDefinitions = function () {
         // Set Album Art with stable behavior per track.
         // 1) On track change we always set once (device art if available, otherwise placeholder).
         // 2) If the same track later receives a valid device art URI, set once and lock.
+        var trackArtist = (msg.trackMetaData && msg.trackMetaData["upnp:artist"]) ? msg.trackMetaData["upnp:artist"] : "";
+        var trackAlbum = (msg.trackMetaData && msg.trackMetaData["upnp:album"]) ? msg.trackMetaData["upnp:album"] : "";
+        var trackTitle = (msg.trackMetaData && msg.trackMetaData["dc:title"]) ? msg.trackMetaData["dc:title"] : "";
+        WNP.d.currentLyricsTrackKey = WNP.buildLyricsTrackKey(
+            trackTitle,
+            trackArtist,
+            trackAlbum,
+            WNP.parseDurationToSeconds(msg.TrackDuration)
+        );
+        WNP.d.currentTrackMetadataTimeStamp = msg.metadataTimeStamp || null;
+
         var currentTrackInfo = WNP.r.mediaTitle.innerText + "|" + WNP.r.mediaSubTitle.innerText + "|" + WNP.r.mediaArtist.innerText + "|" + WNP.r.mediaAlbum.innerText;
         if (WNP.d.prevTrackInfo !== currentTrackInfo) {
             WNP.d.prevTrackInfo = currentTrackInfo; // Remember the last track info
-            var trackArtist = (msg.trackMetaData && msg.trackMetaData["upnp:artist"]) ? msg.trackMetaData["upnp:artist"] : "";
-            var trackAlbum = (msg.trackMetaData && msg.trackMetaData["upnp:album"]) ? msg.trackMetaData["upnp:album"] : "";
-            var trackTitle = (msg.trackMetaData && msg.trackMetaData["dc:title"]) ? msg.trackMetaData["dc:title"] : "";
             WNP.d.currentTrackKey = (trackArtist + "|" + trackAlbum + "|" + trackTitle).trim().toLowerCase();
             WNP.d.currentTrackCoverLocked = false;
             WNP.d.pendingTrackCoverUri = null;
@@ -893,22 +912,54 @@ WNP.setSocketDefinitions = function () {
 
     // On lyrics
     socket.on("lyrics", function (msg) {
+        if (!msg) {
+            WNP.clearLyrics();
+            return;
+        }
+
+        if (msg.trackKey && WNP.d.currentLyricsTrackKey && msg.trackKey !== WNP.d.currentLyricsTrackKey) {
+            return;
+        }
+
         WNP.d.lyrics = msg;
         WNP.d.lyricsIndex = null;
 
-        if (!msg || msg.status !== "ok" || !msg.syncedLyrics) {
+        if (msg.status !== "ok" || !msg.syncedLyrics) {
             WNP.clearLyrics();
             return;
         }
 
-        WNP.d.lyricsLines = WNP.parseSyncedLyrics(msg.syncedLyrics);
-        if (!WNP.d.lyricsLines.length) {
+        var parsedLyrics = WNP.parseSyncedLyrics(msg.syncedLyrics);
+        if (!parsedLyrics.length) {
             WNP.clearLyrics();
             return;
         }
 
-        WNP.r.lyricsContainer.classList.add("is-visible");
-        WNP.updateLyricsProgress(null, 0);
+        WNP.d.pendingLyricsLines = parsedLyrics;
+        WNP.d.pendingLyricsTrackKey = msg.trackKey || null;
+        WNP.d.waitingForSongStart = false;
+
+        if (WNP.d.lastState && WNP.shouldUseStateForCurrentTrack(WNP.d.lastState)) {
+            var lastRelTime = WNP.convertToSeconds(WNP.d.lastState.RelTime || "00:00:00");
+            var lastOffset = 0;
+            if (WNP.d.lastState.CurrentTransportState === "PLAYING") {
+                lastOffset = (WNP.d.lastState.stateTimeStamp && WNP.d.lastState.metadataTimeStamp)
+                    ? Math.round((WNP.d.lastState.stateTimeStamp - WNP.d.lastState.metadataTimeStamp) / 1000)
+                    : 0;
+            }
+            if (lastRelTime <= 1) {
+                // Fresh track start: initially pin lyrics to the beginning.
+                WNP.d.waitingForSongStart = true;
+                WNP.activateLyricsForTrackStart(WNP.d.lastState.RelTime || "00:00:00", lastOffset);
+                return;
+            }
+            // Lyrics arrived after start (e.g. slow provider/cache miss): show immediately at current time.
+            WNP.activateLyricsForTrackStart(WNP.d.lastState.RelTime || "00:00:00", lastOffset);
+            return;
+        }
+
+        // No reliable state snapshot yet; keep pending until the next state update.
+        WNP.d.waitingForSongStart = true;
     });
 
     // On device set
@@ -1131,6 +1182,89 @@ WNP.parseSyncedLyrics = function (syncedLyrics) {
         .sort((a, b) => a.timeMs - b.timeMs);
 };
 
+WNP.normalizeLyricsText = function (value) {
+    if (!value) {
+        return "";
+    }
+    return value
+        .toString()
+        .toLowerCase()
+        .replace(/\([^)]*\)/g, " ")
+        .replace(/\[[^\]]*\]/g, " ")
+        .replace(/&/g, " and ")
+        .replace(/feat\.?/g, " ")
+        .replace(/ft\.?/g, " ")
+        .replace(/[-–—]/g, " ")
+        .replace(/[^a-z0-9\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+};
+
+WNP.normalizeLyricsAlbum = function (value) {
+    return WNP.normalizeLyricsText(value)
+        .replace(/\b(deluxe|edition|remaster(ed)?|expanded|bonus|anniversary|live|acoustic|mono|stereo|version)\b/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+};
+
+WNP.parseDurationToSeconds = function (duration) {
+    if (!duration) {
+        return null;
+    }
+    if (typeof duration === "number" && Number.isFinite(duration)) {
+        return Math.round(duration);
+    }
+    var parts = duration.toString().split(":").map((item) => parseInt(item, 10));
+    if (parts.some((item) => Number.isNaN(item))) {
+        return null;
+    }
+    if (parts.length === 3) {
+        return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    }
+    if (parts.length === 2) {
+        return parts[0] * 60 + parts[1];
+    }
+    return null;
+};
+
+WNP.buildLyricsTrackKey = function (trackName, artistName, albumName, duration) {
+    return [
+        WNP.normalizeLyricsText(trackName),
+        WNP.normalizeLyricsText(artistName),
+        WNP.normalizeLyricsAlbum(albumName),
+        (typeof duration === "number" && Number.isFinite(duration)) ? Math.round(duration) : ""
+    ].join("|");
+};
+
+WNP.activateLyricsForTrackStart = function (relTime, timeStampDiff) {
+    if (!WNP.d.pendingLyricsLines || WNP.d.pendingLyricsLines.length === 0) {
+        return;
+    }
+    WNP.d.lyricsLines = WNP.d.pendingLyricsLines;
+    WNP.d.pendingLyricsLines = [];
+    WNP.d.pendingLyricsTrackKey = null;
+    WNP.d.lyricsIndex = null;
+    WNP.r.lyricsContainer.classList.add("is-visible");
+    WNP.setLyricsPending(true);
+    WNP.setLyricsLines(
+        "",
+        WNP.d.lyricsLines[0] ? WNP.d.lyricsLines[0].text : "",
+        WNP.d.lyricsLines[1] ? WNP.d.lyricsLines[1].text : ""
+    );
+    WNP.d.waitingForSongStart = false;
+    WNP.updateLyricsProgress(relTime, timeStampDiff);
+};
+
+WNP.shouldUseStateForCurrentTrack = function (stateMsg) {
+    if (!stateMsg) {
+        return false;
+    }
+    if (!WNP.d.currentTrackMetadataTimeStamp || !stateMsg.metadataTimeStamp) {
+        return true;
+    }
+    return Number(stateMsg.metadataTimeStamp) === Number(WNP.d.currentTrackMetadataTimeStamp);
+};
+
 /**
  * Clear lyrics UI.
  * @returns {undefined}
@@ -1151,6 +1285,9 @@ WNP.clearLyrics = function () {
     }
     WNP.d.lyricsLines = [];
     WNP.d.lyricsIndex = null;
+    WNP.d.pendingLyricsLines = [];
+    WNP.d.pendingLyricsTrackKey = null;
+    WNP.d.waitingForSongStart = false;
 };
 
 /**

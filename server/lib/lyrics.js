@@ -456,9 +456,17 @@ const getLyricsForMetadata = async (io, deviceInfo, serverSettings) => {
     }
 
     const trackKey = buildTrackKey(signature.trackName, signature.artistName, signature.albumName, signature.duration);
+    const metadataToken = metadata && metadata.metadataTimeStamp ? metadata.metadataTimeStamp : null;
     if (deviceInfo.lyrics && deviceInfo.lyrics.trackKey === trackKey && deviceInfo.lyrics.status === "ok") {
         return;
     }
+
+    const isStaleRequest = () => {
+        if (!metadataToken || !deviceInfo.metadata || !deviceInfo.metadata.metadataTimeStamp) {
+            return false;
+        }
+        return Number(deviceInfo.metadata.metadataTimeStamp) !== Number(metadataToken);
+    };
 
     const cacheLookup = findCachedLyricsForSignature(signature, serverSettings);
     diagnostics.cacheLookupMs = cacheLookup.durationMs;
@@ -522,6 +530,10 @@ const getLyricsForMetadata = async (io, deviceInfo, serverSettings) => {
 
     try {
         const payload = await fetchLyricsForSignature(signature, trackKey, serverSettings, diagnostics);
+        if (isStaleRequest()) {
+            log("Discard stale lyrics response", { trackKey, metadataToken, currentMetadataTimeStamp: deviceInfo.metadata && deviceInfo.metadata.metadataTimeStamp });
+            return;
+        }
         diagnostics.totalMs = Date.now() - diagnostics.requestedAt;
         if (payload && payload.status === "ok") {
             setLyricsState(io, deviceInfo, {
@@ -539,6 +551,10 @@ const getLyricsForMetadata = async (io, deviceInfo, serverSettings) => {
         recordLookupFailure(failureReason, diagnosticsSnapshot);
         clearLyrics(io, deviceInfo, failureReason, signature, trackKey, diagnosticsSnapshot);
     } catch (error) {
+        if (isStaleRequest()) {
+            log("Discard stale lyrics error", { trackKey, metadataToken, currentMetadataTimeStamp: deviceInfo.metadata && deviceInfo.metadata.metadataTimeStamp });
+            return;
+        }
         log("LRCLIB error:", error.message);
         diagnostics.totalMs = Date.now() - diagnostics.requestedAt;
         const diagnosticsSnapshot = snapshotDiagnostics();
