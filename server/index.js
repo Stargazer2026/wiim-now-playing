@@ -181,6 +181,9 @@ app.use(express.static(__dirname + "/public"));
 app.get("/tv", limiter, function (req, res) { // TV Mode
     res.sendFile(__dirname + "/public/tv.html");
 });
+app.get("/portrait-tv", limiter, function (req, res) { // Portrait TV Mode
+    res.sendFile(__dirname + "/public/portrait-tv.html");
+});
 app.get("/debug", limiter, function (req, res) { // Debug page
     res.sendFile(__dirname + "/public/debug.html");
 });
