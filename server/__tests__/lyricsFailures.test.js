@@ -19,8 +19,8 @@ describe('lyricsFailures.js', () => {
         }
     };
 
-    it('records and lists failed lookups', () => {
-        const stored = lyricsFailures.recordFailure({
+    it('replaces duplicate failed lookups for the same song and keeps different songs', () => {
+        const firstStored = lyricsFailures.recordFailure({
             reason: 'not-found',
             signature: {
                 trackName: 'Song',
@@ -37,13 +37,52 @@ describe('lyricsFailures.js', () => {
             requests: [{ endpoint: 'search', result: 'miss', response: [] }],
             diagnostics: { totalMs: 10 }
         }, serverSettings);
+        expect(firstStored).toBe(true);
 
-        expect(stored).toBe(true);
+        const duplicateStored = lyricsFailures.recordFailure({
+            reason: 'error',
+            signature: {
+                trackName: 'Song',
+                artistName: 'Artist',
+                albumName: 'Album',
+                duration: 123
+            },
+            normalized: {
+                trackName: 'song',
+                artistName: 'artist',
+                albumName: 'album'
+            },
+            queryString: 'track_name=Song&artist_name=Artist&album_name=Album&duration=123',
+            requests: [{ endpoint: 'search', result: 'error', response: [] }],
+            diagnostics: { totalMs: 12 }
+        }, serverSettings);
+        expect(duplicateStored).toBe(true);
+
+        const differentSongStored = lyricsFailures.recordFailure({
+            reason: 'not-found',
+            signature: {
+                trackName: 'New Song',
+                artistName: 'New Artist',
+                albumName: 'New Album',
+                duration: 321
+            },
+            normalized: {
+                trackName: 'new song',
+                artistName: 'new artist',
+                albumName: 'new album'
+            },
+            queryString: 'track_name=New%20Song&artist_name=New%20Artist&album_name=New%20Album&duration=321',
+            requests: [{ endpoint: 'search', result: 'miss', response: [] }],
+            diagnostics: { totalMs: 15 }
+        }, serverSettings);
+        expect(differentSongStored).toBe(true);
 
         const entries = lyricsFailures.listFailures(serverSettings, 10);
-        expect(entries.length).toBeGreaterThanOrEqual(1);
-        expect(entries[0]).toMatchObject({
-            reason: 'not-found',
+        expect(entries).toHaveLength(2);
+
+        const duplicateEntry = entries.find((entry) => entry.normalizedTrackName === 'song');
+        expect(duplicateEntry).toMatchObject({
+            reason: 'error',
             wiimTrackName: 'Song',
             wiimArtistName: 'Artist',
             wiimAlbumName: 'Album',
@@ -51,6 +90,17 @@ describe('lyricsFailures.js', () => {
             normalizedArtistName: 'artist',
             normalizedAlbumName: 'album'
         });
-        expect(Array.isArray(entries[0].requests)).toBe(true);
+        expect(Array.isArray(duplicateEntry.requests)).toBe(true);
+
+        const differentEntry = entries.find((entry) => entry.normalizedTrackName === 'new song');
+        expect(differentEntry).toMatchObject({
+            reason: 'not-found',
+            wiimTrackName: 'New Song',
+            wiimArtistName: 'New Artist',
+            wiimAlbumName: 'New Album',
+            normalizedTrackName: 'new song',
+            normalizedArtistName: 'new artist',
+            normalizedAlbumName: 'new album'
+        });
     });
 });

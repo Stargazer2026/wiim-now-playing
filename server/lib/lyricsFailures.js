@@ -57,6 +57,13 @@ const ensureDb = (serverSettings) => {
         `);
 
         statements = {
+            deleteFailureBySignature: db.prepare(`
+                DELETE FROM lyrics_lookup_failures
+                WHERE normalizedTrackName = ?
+                  AND normalizedArtistName = ?
+                  AND normalizedAlbumName = ?
+                  AND ((wiimDuration IS NULL AND ? IS NULL) OR wiimDuration = ?)
+            `),
             insertFailure: db.prepare(`
                 INSERT INTO lyrics_lookup_failures (
                     failedAt,
@@ -137,16 +144,29 @@ const recordFailure = (entry, serverSettings) => {
     const normalized = entry.normalized || {};
 
     try {
+        const normalizedTrackName = normalized.trackName || "";
+        const normalizedArtistName = normalized.artistName || "";
+        const normalizedAlbumName = normalized.albumName || "";
+        const wiimDuration = signature.duration || null;
+
+        statements.deleteFailureBySignature.run(
+            normalizedTrackName,
+            normalizedArtistName,
+            normalizedAlbumName,
+            wiimDuration,
+            wiimDuration
+        );
+
         statements.insertFailure.run(
             now,
             entry.reason || "not-found",
             signature.trackName || "",
             signature.artistName || "",
             signature.albumName || "",
-            signature.duration || null,
-            normalized.trackName || "",
-            normalized.artistName || "",
-            normalized.albumName || "",
+            wiimDuration,
+            normalizedTrackName,
+            normalizedArtistName,
+            normalizedAlbumName,
             entry.queryString || "",
             safeJson(entry.requests || []),
             safeJson(entry.diagnostics || null)
