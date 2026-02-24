@@ -214,6 +214,9 @@ app.get("/tv", limiter, function (req, res) { // TV Mode
 app.get("/portrait-tv", limiter, function (req, res) { // Portrait TV Mode
     res.sendFile(__dirname + "/public/portrait-tv.html");
 });
+app.get("/landscape-tv", limiter, function (req, res) { // Landscape TV Mode
+    res.sendFile(__dirname + "/public/landscape-tv.html");
+});
 app.get("/debug", limiter, function (req, res) { // Debug page
     res.sendFile(__dirname + "/public/debug.html");
 });

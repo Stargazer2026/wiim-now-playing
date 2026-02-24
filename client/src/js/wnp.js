@@ -776,7 +776,7 @@ WNP.setSocketDefinitions = function () {
         var isCompactTvMode = !!(
             WNP.r.wnpApp &&
             WNP.r.wnpApp.classList &&
-            (WNP.r.wnpApp.classList.contains("tv-mode") || WNP.r.wnpApp.classList.contains("portrait-tv-mode"))
+            (WNP.r.wnpApp.classList.contains("tv-mode") || WNP.r.wnpApp.classList.contains("portrait-tv-mode") || WNP.r.wnpApp.classList.contains("landscape-tv-mode"))
         );
         if (isCompactTvMode) {
             var compactStripParen = function (input) {
