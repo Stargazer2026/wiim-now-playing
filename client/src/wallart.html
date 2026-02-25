@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>WiiM Now Playing (Wallart Auto)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <link rel="apple-touch-icon" sizes="180x180" href="./favicon/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="./favicon/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="./favicon/favicon-16x16.png">
+    <link rel="manifest" href="./favicon/site.webmanifest">
+    <style>
+        html,
+        body {
+            height: 100%;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+            background: #101010;
+        }
+
+        #wallartFrame {
+            border: 0;
+            width: 100%;
+            height: 100%;
+            display: block;
+            background: #101010;
+        }
+    </style>
+</head>
+
+<body>
+    <iframe id="wallartFrame" title="WiiM Wallart"></iframe>
+
+    <script>
+        (function () {
+            var frame = document.getElementById("wallartFrame");
+            var currentPath = "";
+
+            var getTargetPath = function () {
+                var viewportWidth = window.visualViewport ? window.visualViewport.width : window.innerWidth;
+                var viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+                return viewportHeight > viewportWidth ? "/wallart-portrait" : "/wallart-landscape";
+            };
+
+            var syncFrame = function () {
+                var targetPath = getTargetPath();
+                if (targetPath === currentPath) {
+                    return;
+                }
+                currentPath = targetPath;
+                frame.src = targetPath;
+            };
+
+            window.addEventListener("resize", syncFrame);
+            window.addEventListener("orientationchange", syncFrame);
+            if (window.visualViewport) {
+                window.visualViewport.addEventListener("resize", syncFrame);
+            }
+            syncFrame();
+        })();
+    </script>
+</body>
+
+</html>
