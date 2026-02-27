@@ -73,6 +73,20 @@ DEBUG=lib:lyrics,lib:lyrics-cache node server/index.js
 DEBUG=lib:* node server/index.js
 ```
 
+## Rate limiting / "Too many requests"
+
+The server uses `express-rate-limit` for HTTP routes. By default it allows **1000 requests per IP per 15 minutes**. If a client (or multiple clients behind the same NAT IP) exceeds that, Express returns `429 Too Many Requests` with a body like `Too many requests, please try again later.`
+
+You can tune or disable this behavior with environment variables:
+
+```shell
+# Disable rate limiting entirely
+RATE_LIMIT_ENABLED=false node server/index.js
+
+# Keep rate limiting, but relax it
+RATE_LIMIT_MAX=5000 RATE_LIMIT_WINDOW_MS=900000 node server/index.js
+```
+
 ## "How do I update to the latest version?"
 
 This depends on how you've installed WiiM Now Playing the first time.

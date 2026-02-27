@@ -192,14 +192,23 @@ setTimeout(() => {
 // Use CORS
 app.use(cors());
 
-// Set up rate limiter: maximum 100 requests per 15 minutes per IP
-// As static file serving can be quite intensive we set a limit here
-// As suggested by Github code scanning tools
+// Set up rate limiter to protect static/file-serving routes from bursts.
+// Tune with env vars:
+// RATE_LIMIT_ENABLED=false to disable.
+// RATE_LIMIT_WINDOW_MS (default 15 minutes), RATE_LIMIT_MAX (default 1000).
 // As suggested by: https://www.npmjs.com/package/express-rate-limit
-const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 1000, // limit each IP to 1000 requests per windowMs
-});
+const rateLimitEnabled = String(process.env.RATE_LIMIT_ENABLED || "true").toLowerCase() !== "false";
+const rateLimitWindowMs = Number(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000;
+const rateLimitMax = Number(process.env.RATE_LIMIT_MAX) || 1000;
+
+const limiter = rateLimitEnabled
+    ? rateLimit({
+        windowMs: rateLimitWindowMs,
+        max: rateLimitMax,
+        standardHeaders: true,
+        legacyHeaders: false,
+    })
+    : (req, res, next) => next();
 
 // Apply rate limiter to static/file-serving routes
 app.use(limiter);
