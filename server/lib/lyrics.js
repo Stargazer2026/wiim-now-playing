@@ -290,9 +290,55 @@ const fetchLyricsFromSearch = async (signature, serverSettings, diagnostics) => 
     });
     const results = await fetchJsonWithTiming(`/api/search?${params.toString()}`, serverSettings, diagnostics, "search");
     if (!Array.isArray(results)) {
+        return { match: null, hadUnsyncedLyrics: false };
+    }
+
+    const hadUnsyncedLyrics = results.some((candidate) => candidate && candidate.plainLyrics && !candidate.instrumental);
+    return {
+        match: filterCandidates(results, signature),
+        hadUnsyncedLyrics
+    };
+};
+
+const fetchLyricsFromRelaxedSearch = async (signature, serverSettings, diagnostics) => {
+    const params = new URLSearchParams({
+        track_name: signature.trackName,
+        artist_name: signature.artistName
+    });
+    const results = await fetchJsonWithTiming(`/api/search?${params.toString()}`, serverSettings, diagnostics, "search-relaxed");
+    if (!Array.isArray(results)) {
         return null;
     }
-    return filterCandidates(results, signature);
+
+    const relaxedSignature = {
+        ...signature,
+        albumName: ""
+    };
+
+    const filtered = results
+        .filter((candidate) => candidate && candidate.syncedLyrics && !candidate.instrumental)
+        .filter((candidate) => {
+            if (!signature.duration || !candidate.duration) {
+                return false;
+            }
+            return Math.abs(candidate.duration - signature.duration) <= 2;
+        })
+        .map((candidate) => ({
+            ...candidate,
+            score: scoreCandidate({
+                ...candidate,
+                albumName: ""
+            }, relaxedSignature)
+        }))
+        .filter((candidate) => candidate.score >= MATCH_SCORE_THRESHOLD)
+        .sort((a, b) => {
+            if (b.score !== a.score) {
+                return b.score - a.score;
+            }
+            return Math.abs((a.duration || 0) - signature.duration) - Math.abs((b.duration || 0) - signature.duration);
+        });
+
+    return filtered[0] || null;
 };
 
 const fetchLyricsBySignature = async (signature, serverSettings, diagnostics) => {
@@ -342,15 +388,29 @@ const fetchLyricsBySignature = async (signature, serverSettings, diagnostics) =>
             pending.splice(index, 1);
         }
 
-        if (settled.status === "ok" && isValid(settled.result)) {
-            if (diagnostics) {
-                diagnostics.pendingRequests = pending.map((task) => task.label);
+        if (settled.status === "ok") {
+            const candidate = settled.label === "search" ? settled.result?.match : settled.result;
+            if (isValid(candidate)) {
+                if (diagnostics) {
+                    diagnostics.pendingRequests = pending.map((task) => task.label);
+                }
+                return candidate;
             }
-            return settled.result;
+            if ((settled.label === "search" && settled.result?.hadUnsyncedLyrics) || hasUnsyncedLyrics(settled.result)) {
+                hadUnsyncedLyrics = true;
+            }
         }
-        if (settled.status === "ok" && hasUnsyncedLyrics(settled.result)) {
-            hadUnsyncedLyrics = true;
-        }
+    }
+
+    const relaxedMatch = await fetchLyricsFromRelaxedSearch(signature, serverSettings, diagnostics);
+    if (relaxedMatch) {
+        return {
+            ...relaxedMatch,
+            fallback: {
+                mode: "relaxed-track-artist",
+                reason: hadUnsyncedLyrics ? "album-no-synced-lyrics" : "album-no-match"
+            }
+        };
     }
 
     if (hadUnsyncedLyrics) {
@@ -543,10 +603,20 @@ const getLyricsForMetadata = async (io, deviceInfo, serverSettings) => {
         }
         diagnostics.totalMs = Date.now() - diagnostics.requestedAt;
         if (payload && payload.status === "ok") {
-            clearResolvedFailure();
+            const diagnosticsSnapshot = snapshotDiagnostics();
+            if (payload.reason === "relaxed-match") {
+                log("Lyrics resolved via relaxed lookup", {
+                    trackKey,
+                    relaxedLookup: payload.lookup,
+                    signature
+                });
+                recordLookupFailure("relaxed-match", diagnosticsSnapshot);
+            } else {
+                clearResolvedFailure();
+            }
             setLyricsState(io, deviceInfo, {
                 ...payload,
-                diagnostics: snapshotDiagnostics()
+                diagnostics: diagnosticsSnapshot
             });
             schedulePrefetchForSignature(io, signature, serverSettings, {
                 reason: "live-fetch"
@@ -607,6 +677,8 @@ const fetchLyricsForSignature = async (signature, trackKey, serverSettings, diag
             const payload = {
                 status: "ok",
                 provider: "lrclib",
+                reason: lyrics.fallback ? "relaxed-match" : "match",
+                lookup: lyrics.fallback || null,
                 trackKey,
                 signature,
                 id: lyrics.id,
