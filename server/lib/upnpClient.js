@@ -22,6 +22,15 @@ const coverArt = require("./coverArt.js");
 const kiosk = require("./kiosk.js");
 const log = require("debug")("lib:upnpClient");
 
+const hasUsableDeviceAlbumArt = (metadata) => {
+    const track = metadata && metadata.trackMetaData ? metadata.trackMetaData : null;
+    if (!track || typeof track["upnp:albumArtURI"] !== "string") {
+        return false;
+    }
+    const uri = track["upnp:albumArtURI"].trim();
+    return uri.startsWith("http://") || uri.startsWith("https://");
+};
+
 const prefetchNextTracks = (result, serverSettings) => {
     if (!result || !result.NextTrackMetaData) {
         return;
@@ -236,7 +245,7 @@ const updateDeviceMetadata = (io, deviceInfo, serverSettings) => {
                                             metadataTimeStamp: lib.getTimeStamp()
                                         };;
                                         io.emit("metadata", deviceInfo.metadata);
-                                        if (serverSettings.features.coverArt.enabled) {
+                                        if (serverSettings.features.coverArt.enabled && !hasUsableDeviceAlbumArt(deviceInfo.metadata)) {
                                             coverArt.resolveAlbumArt(deviceInfo.metadata, serverSettings).then((resolved) => {
                                                 if (!resolved || !deviceInfo.metadata) {
                                                     return;
@@ -248,6 +257,8 @@ const updateDeviceMetadata = (io, deviceInfo, serverSettings) => {
                                             }).catch((error) => {
                                                 log("Cover art resolve error", error);
                                             });
+                                        } else if (serverSettings.features.coverArt.enabled) {
+                                            log("Skip cover-art fallback resolve: device albumArtURI is present");
                                         }
                                         lyrics.getLyricsForMetadata(io, deviceInfo, serverSettings).catch((error) => {
                                             log("Lyrics update error", error);
@@ -342,7 +353,7 @@ const updateDeviceMetadata = (io, deviceInfo, serverSettings) => {
                                             metadataTimeStamp: lib.getTimeStamp()
                                         };
                                         io.emit("metadata", deviceInfo.metadata);
-                                        if (serverSettings.features.coverArt.enabled) {
+                                        if (serverSettings.features.coverArt.enabled && !hasUsableDeviceAlbumArt(deviceInfo.metadata)) {
                                             coverArt.resolveAlbumArt(deviceInfo.metadata, serverSettings).then((resolved) => {
                                                 if (!resolved || !deviceInfo.metadata) {
                                                     return;
@@ -354,6 +365,8 @@ const updateDeviceMetadata = (io, deviceInfo, serverSettings) => {
                                             }).catch((error) => {
                                                 log("Cover art resolve error", error);
                                             });
+                                        } else if (serverSettings.features.coverArt.enabled) {
+                                            log("Skip cover-art fallback resolve: device albumArtURI is present");
                                         }
                                         lyrics.getLyricsForMetadata(io, deviceInfo, serverSettings).catch((error) => {
                                             log("Lyrics update error", error);

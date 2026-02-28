@@ -56,7 +56,9 @@ WNP.d = {
     waitingForSongStart: false,
     currentTrackKey: null,
     currentTrackCoverLocked: false,
-    pendingTrackCoverUri: null
+    pendingTrackCoverUri: null,
+    pendingTrackCoverSource: null,
+    currentTrackCoverSource: null
 };
 
 // Reference placeholders.
@@ -378,7 +380,9 @@ WNP.setUIListeners = function () {
             }
             if (WNP.normalizeUri(this.src) === WNP.d.pendingTrackCoverUri) {
                 WNP.d.currentTrackCoverLocked = true;
+                WNP.d.currentTrackCoverSource = WNP.d.pendingTrackCoverSource || null;
                 WNP.d.pendingTrackCoverUri = null;
+                WNP.d.pendingTrackCoverSource = null;
             }
         });
 
@@ -394,7 +398,13 @@ WNP.setUIListeners = function () {
             if (WNP.normalizeUri(this.src) === WNP.d.pendingTrackCoverUri) {
                 // Keep unlocked so the next metadata update can retry the same track.
                 WNP.d.currentTrackCoverLocked = false;
+                WNP.logCover("error->unlock", {
+                    src: this.src,
+                    pendingSource: WNP.d.pendingTrackCoverSource,
+                    trackKey: WNP.d.currentTrackKey
+                });
                 WNP.d.pendingTrackCoverUri = null;
+                WNP.d.pendingTrackCoverSource = null;
             }
         });
     }
@@ -866,18 +876,27 @@ WNP.setSocketDefinitions = function () {
             WNP.d.currentTrackKey = (trackArtist + "|" + trackAlbum + "|" + trackTitle).trim().toLowerCase();
             WNP.d.currentTrackCoverLocked = false;
             WNP.d.pendingTrackCoverUri = null;
+            WNP.d.pendingTrackCoverSource = null;
+            WNP.d.currentTrackCoverSource = null;
             console.log("WNP", "Track changed:", currentTrackInfo);
+            WNP.logCover("track-changed reset", {
+                trackKey: WNP.d.currentTrackKey,
+                albumArtUriRaw: albumArtUriRaw,
+                albumArtUri: albumArtUri
+            });
             WNP.clearLyrics();
             if (albumArtUriRaw) {
-                WNP.trySetTrackCover(albumArtUri);
+                WNP.trySetTrackCover(albumArtUri, "device");
             }
             else {
                 WNP.setAlbumArt(albumArtUri);
             }
-        } else if (!WNP.d.currentTrackCoverLocked && albumArtUriRaw) {
-            // Same song, but now a valid device URI is available: switch exactly once.
+        } else if (albumArtUriRaw) {
+            // Same song: always allow switching from fallback/proxy art to device-provided art.
             if (WNP.r.albumArt.src !== albumArtUri) {
-                WNP.trySetTrackCover(albumArtUri);
+                if (WNP.d.currentTrackCoverSource !== "device" || !WNP.d.currentTrackCoverLocked) {
+                    WNP.trySetTrackCover(albumArtUri, "device");
+                }
             }
         }
 
@@ -931,14 +950,22 @@ WNP.setSocketDefinitions = function () {
     });
 
     socket.on("cover-art-resolved", function (msg) {
+        WNP.logCover("cover-art-resolved event", {
+            msgTrackKey: msg && msg.trackKey,
+            currentTrackKey: WNP.d.currentTrackKey,
+            cacheKey: msg && msg.cacheKey,
+            currentSource: WNP.d.currentTrackCoverSource,
+            locked: WNP.d.currentTrackCoverLocked
+        });
         if (!msg || !msg.cacheKey || !WNP.d.currentTrackKey || msg.trackKey !== WNP.d.currentTrackKey) {
+            WNP.logCover("cover-art-resolved ignored (invalid/stale)");
             return;
         }
-        if (WNP.d.currentTrackCoverLocked) {
+        if (WNP.d.currentTrackCoverLocked || WNP.d.currentTrackCoverSource === "device") {
             return;
         }
         var coverUri = WNP.buildResolvedCoverUri(msg.cacheKey);
-        WNP.trySetTrackCover(coverUri);
+        WNP.trySetTrackCover(coverUri, "resolved");
     });
 
     // On lyrics
@@ -1471,6 +1498,14 @@ WNP.getCookie = function (name) {
     return null;
 };
 
+WNP.logCover = function (message, payload) {
+    if (typeof payload === "undefined") {
+        console.log("WNP", "[cover]", message);
+        return;
+    }
+    console.log("WNP", "[cover]", message, payload);
+};
+
 WNP.buildResolvedCoverUri = function (cacheKey) {
     if (!cacheKey) {
         return WNP.s.rndAlbumArtUri;
@@ -1489,8 +1524,15 @@ WNP.normalizeUri = function (uri) {
     }
 };
 
-WNP.trySetTrackCover = function (imgUri) {
+WNP.trySetTrackCover = function (imgUri, source) {
     WNP.d.pendingTrackCoverUri = WNP.normalizeUri(imgUri);
+    WNP.d.pendingTrackCoverSource = source || null;
+    if (WNP.d.pendingTrackCoverSource === "resolved") {
+        console.log("WNP", "Fallback cover applied", {
+            imgUri: imgUri,
+            trackKey: WNP.d.currentTrackKey
+        });
+    }
     WNP.setAlbumArt(imgUri);
 };
 
