@@ -30,6 +30,11 @@ WNP.s = {
         "chkCoverArtEnabled",
         "selCoverArtProvider",
         "coverArtMemoryPoolMB",
+        "chkWledEnabled",
+        "chkWledQuickToggle",
+        "wledHost",
+        "wledPreset",
+        "wledToggleUrl",
         "kioskHost",
         "kioskPassword",
         "kioskDelaySec"
@@ -128,6 +133,14 @@ WNP.setUIReferences = function () {
  * Setting the listeners on the UI elements of the app.
  * @returns {undefined}
  */
+WNP.emitWledSettingsUpdate = function (changes) {
+    socket.emit("server-settings-update", {
+        features: {
+            wled: changes
+        }
+    });
+};
+
 WNP.setUIListeners = function () {
     console.log("WNP", "Set UI Listeners...")
 
@@ -330,6 +343,48 @@ WNP.setUIListeners = function () {
                         memoryPoolMB: poolValue
                     }
                 }
+            });
+        });
+    }
+
+    if (this.r.chkWledEnabled) {
+        this.r.chkWledEnabled.addEventListener("change", function () {
+            if (WNP.r.chkWledQuickToggle) {
+                WNP.r.chkWledQuickToggle.checked = this.checked;
+            }
+            WNP.emitWledSettingsUpdate({
+                enabled: this.checked
+            });
+        });
+    }
+
+    if (this.r.chkWledQuickToggle) {
+        this.r.chkWledQuickToggle.addEventListener("change", function () {
+            if (WNP.r.chkWledEnabled) {
+                WNP.r.chkWledEnabled.checked = this.checked;
+            }
+            WNP.emitWledSettingsUpdate({
+                enabled: this.checked
+            });
+        });
+    }
+
+    if (this.r.wledHost) {
+        this.r.wledHost.addEventListener("change", function () {
+            WNP.emitWledSettingsUpdate({
+                host: this.value.trim()
+            });
+        });
+    }
+
+    if (this.r.wledPreset) {
+        this.r.wledPreset.addEventListener("change", function () {
+            var presetValue = parseInt(this.value, 10);
+            if (isNaN(presetValue) || presetValue < 0) {
+                presetValue = 0;
+            }
+            WNP.emitWledSettingsUpdate({
+                playbackPreset: presetValue
             });
         });
     }
@@ -547,6 +602,27 @@ WNP.setSocketDefinitions = function () {
                 WNP.setCookie("wnpLyricsEnabled", WNP.r.chkLyricsEnabled.checked, 180);
             }
             WNP.d.lyricsCookieApplied = true;
+        }
+
+        var wledSettings = (msg && msg.features && msg.features.wled) ? msg.features.wled : {};
+        var wledEnabled = Boolean(wledSettings.enabled);
+        if (WNP.r.chkWledEnabled) {
+            WNP.r.chkWledEnabled.checked = wledEnabled;
+        }
+        if (WNP.r.chkWledQuickToggle) {
+            WNP.r.chkWledQuickToggle.checked = wledEnabled;
+        }
+        if (WNP.r.wledHost) {
+            WNP.r.wledHost.value = wledSettings.host || "";
+        }
+        if (WNP.r.wledPreset) {
+            var presetValue = (typeof wledSettings.playbackPreset === "number") ? wledSettings.playbackPreset : 0;
+            WNP.r.wledPreset.value = presetValue;
+        }
+        if (WNP.r.wledToggleUrl) {
+            var relativeUrl = "/api/wled/toggle";
+            WNP.r.wledToggleUrl.href = relativeUrl;
+            WNP.r.wledToggleUrl.innerText = relativeUrl;
         }
 
         if (WNP.r.kioskHost) {

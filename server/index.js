@@ -35,6 +35,7 @@ const lyricsCache = require("./lib/lyricsCache.js");
 const lyricsFailures = require("./lib/lyricsFailures.js");
 const coverArt = require("./lib/coverArt.js");
 const kiosk = require("./lib/kiosk.js");
+const wled = require("./lib/wled.js");
 const log = require("debug")("index"); // See README.md on debugging
 
 // For versionioning purposes
@@ -88,6 +89,11 @@ let serverSettings = { // Placeholder for current server settings
             "enabled": false,
             "provider": "caa",
             "memoryPoolMB": 100
+        },
+        "wled": {
+            "enabled": false,
+            "host": "",
+            "playbackPreset": 0
         }
     },
     "kiosk": {
@@ -163,6 +169,7 @@ lib.getSettings(serverSettings);
 lyricsCache.startCacheMaintenance(serverSettings);
 coverArt.applySettings(serverSettings);
 kiosk.applySettings(serverSettings);
+wled.applySettings(serverSettings, deviceInfo && deviceInfo.state ? deviceInfo.state.CurrentTransportState : null);
 syncPolling();
 
 // ===========================================================================
@@ -241,6 +248,18 @@ app.get("/assets", limiter, function (req, res) { // Assets test page
 });
 app.get("/analyze", limiter, function (req, res) { // Lyrics analysis page
     res.sendFile(__dirname + "/public/analyze.html");
+});
+
+app.get("/api/wled/toggle", limiter, function (req, res) {
+    const currentEnabled = Boolean(serverSettings && serverSettings.features && serverSettings.features.wled && serverSettings.features.wled.enabled);
+    serverSettings.features.wled.enabled = !currentEnabled;
+    lib.saveSettings(serverSettings);
+    wled.applySettings(serverSettings, deviceInfo && deviceInfo.state ? deviceInfo.state.CurrentTransportState : null);
+    io.emit("server-settings", serverSettings);
+    res.json({
+        success: true,
+        enabled: serverSettings.features.wled.enabled
+    });
 });
 
 app.get("/api/lyrics-failures", limiter, function (req, res) {
@@ -465,6 +484,20 @@ io.on("connection", (socket) => {
             lib.saveSettings(serverSettings);
             coverArt.applySettings(serverSettings);
             sockets.getServerSettings(io, serverSettings);
+        }
+        if (msg && msg.features && msg.features.wled) {
+            if (typeof msg.features.wled.enabled === "boolean") {
+                serverSettings.features.wled.enabled = msg.features.wled.enabled;
+            }
+            if (typeof msg.features.wled.host === "string") {
+                serverSettings.features.wled.host = msg.features.wled.host.trim();
+            }
+            if (typeof msg.features.wled.playbackPreset === "number") {
+                serverSettings.features.wled.playbackPreset = Math.max(0, Math.round(msg.features.wled.playbackPreset));
+            }
+            lib.saveSettings(serverSettings);
+            sockets.getServerSettings(io, serverSettings);
+            wled.applySettings(serverSettings, deviceInfo && deviceInfo.state ? deviceInfo.state.CurrentTransportState : null);
         }
         if (msg && msg.kiosk) {
             if (typeof msg.kiosk.host === "string") {

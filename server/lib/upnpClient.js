@@ -20,6 +20,7 @@ const lib = require("./lib.js"); // Generic functionality
 const lyrics = require("./lyrics.js"); // Lyrics functionality
 const coverArt = require("./coverArt.js");
 const kiosk = require("./kiosk.js");
+const wled = require("./wled.js");
 const log = require("debug")("lib:upnpClient");
 
 const hasUsableDeviceAlbumArt = (metadata) => {
@@ -180,6 +181,7 @@ const updateDeviceState = (io, deviceInfo, serverSettings) => {
                         };
                         io.emit("state", deviceInfo.state);
                         kiosk.handleTransportState(result.CurrentTransportState, previousState, serverSettings);
+                        wled.handleTransportState(result.CurrentTransportState, previousState, serverSettings);
                         if (result.CurrentTransportState === "TRANSITIONING" && previousState !== "TRANSITIONING") {
                             module.exports.updateDeviceMetadata(io, deviceInfo, serverSettings);
                         }
