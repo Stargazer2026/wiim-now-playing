@@ -32,6 +32,17 @@ const hasUsableDeviceAlbumArt = (metadata) => {
     return uri.startsWith("http://") || uri.startsWith("https://");
 };
 
+const getLyricsPayloadForCoverArt = (deviceInfo, metadata) => {
+    if (!deviceInfo || !deviceInfo.lyrics || deviceInfo.lyrics.status !== "ok") {
+        return null;
+    }
+    const metadataKey = coverArt.getTrackKey(metadata);
+    if (!metadataKey || metadataKey !== deviceInfo.lyrics.trackKey) {
+        return null;
+    }
+    return deviceInfo.lyrics;
+};
+
 const prefetchNextTracks = (result, serverSettings) => {
     if (!result || !result.NextTrackMetaData) {
         return;
@@ -247,8 +258,8 @@ const updateDeviceMetadata = (io, deviceInfo, serverSettings) => {
                                             metadataTimeStamp: lib.getTimeStamp()
                                         };;
                                         io.emit("metadata", deviceInfo.metadata);
-                                        if (serverSettings.features.coverArt.enabled && !hasUsableDeviceAlbumArt(deviceInfo.metadata)) {
-                                            coverArt.resolveAlbumArt(deviceInfo.metadata, serverSettings).then((resolved) => {
+                                        if (serverSettings.features.coverArt.enabled && (!hasUsableDeviceAlbumArt(deviceInfo.metadata) || serverSettings.features.coverArt.preferGenerated)) {
+                                            coverArt.resolveAlbumArt(deviceInfo.metadata, serverSettings, getLyricsPayloadForCoverArt(deviceInfo, deviceInfo.metadata)).then((resolved) => {
                                                 if (!resolved || !deviceInfo.metadata) {
                                                     return;
                                                 }
@@ -355,8 +366,8 @@ const updateDeviceMetadata = (io, deviceInfo, serverSettings) => {
                                             metadataTimeStamp: lib.getTimeStamp()
                                         };
                                         io.emit("metadata", deviceInfo.metadata);
-                                        if (serverSettings.features.coverArt.enabled && !hasUsableDeviceAlbumArt(deviceInfo.metadata)) {
-                                            coverArt.resolveAlbumArt(deviceInfo.metadata, serverSettings).then((resolved) => {
+                                        if (serverSettings.features.coverArt.enabled && (!hasUsableDeviceAlbumArt(deviceInfo.metadata) || serverSettings.features.coverArt.preferGenerated)) {
+                                            coverArt.resolveAlbumArt(deviceInfo.metadata, serverSettings, getLyricsPayloadForCoverArt(deviceInfo, deviceInfo.metadata)).then((resolved) => {
                                                 if (!resolved || !deviceInfo.metadata) {
                                                     return;
                                                 }

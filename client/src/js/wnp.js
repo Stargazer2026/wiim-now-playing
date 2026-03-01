@@ -28,6 +28,7 @@ WNP.s = {
         "lyricsCacheSizeMB",
         "lyricsPrefetchMode",
         "chkCoverArtEnabled",
+        "chkCoverArtPreferGenerated",
         "selCoverArtProvider",
         "coverArtMemoryPoolMB",
         "chkWledEnabled",
@@ -319,6 +320,18 @@ WNP.setUIListeners = function () {
         });
     }
 
+    if (this.r.chkCoverArtPreferGenerated) {
+        this.r.chkCoverArtPreferGenerated.addEventListener("change", function () {
+            socket.emit("server-settings-update", {
+                features: {
+                    coverArt: {
+                        preferGenerated: this.checked
+                    }
+                }
+            });
+        });
+    }
+
     if (this.r.selCoverArtProvider) {
         this.r.selCoverArtProvider.addEventListener("change", function () {
             socket.emit("server-settings-update", {
@@ -576,6 +589,9 @@ WNP.setSocketDefinitions = function () {
 
         if (WNP.r.chkCoverArtEnabled) {
             WNP.r.chkCoverArtEnabled.checked = Boolean(msg && msg.features && msg.features.coverArt && msg.features.coverArt.enabled);
+        }
+        if (WNP.r.chkCoverArtPreferGenerated) {
+            WNP.r.chkCoverArtPreferGenerated.checked = Boolean(msg && msg.features && msg.features.coverArt && msg.features.coverArt.preferGenerated);
         }
         if (WNP.r.selCoverArtProvider) {
             WNP.r.selCoverArtProvider.value = (msg && msg.features && msg.features.coverArt && msg.features.coverArt.provider) ? msg.features.coverArt.provider : "caa";
@@ -1037,7 +1053,7 @@ WNP.setSocketDefinitions = function () {
             WNP.logCover("cover-art-resolved ignored (invalid/stale)");
             return;
         }
-        if (WNP.d.currentTrackCoverLocked || WNP.d.currentTrackCoverSource === "device") {
+        if (!WNP.shouldPreferGeneratedCover() && (WNP.d.currentTrackCoverLocked || WNP.d.currentTrackCoverSource === "device")) {
             return;
         }
         var coverUri = WNP.buildResolvedCoverUri(msg.cacheKey);
@@ -1598,6 +1614,15 @@ WNP.normalizeUri = function (uri) {
     } catch {
         return uri;
     }
+};
+
+WNP.shouldPreferGeneratedCover = function () {
+    return Boolean(
+        WNP.d.serverSettings &&
+        WNP.d.serverSettings.features &&
+        WNP.d.serverSettings.features.coverArt &&
+        WNP.d.serverSettings.features.coverArt.preferGenerated
+    );
 };
 
 WNP.trySetTrackCover = function (imgUri, source) {

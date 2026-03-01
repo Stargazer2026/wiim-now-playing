@@ -88,6 +88,7 @@ let serverSettings = { // Placeholder for current server settings
         "coverArt": {
             "enabled": false,
             "provider": "caa",
+            "preferGenerated": false,
             "memoryPoolMB": 100
         },
         "wled": {
@@ -474,9 +475,12 @@ io.on("connection", (socket) => {
             }
             if (typeof msg.features.coverArt.provider === "string") {
                 const provider = msg.features.coverArt.provider.toLowerCase();
-                if (provider === "caa" || provider === "itunes") {
+                if (provider === "caa" || provider === "itunes" || provider === "ai" || provider === "openai") {
                     serverSettings.features.coverArt.provider = provider;
                 }
+            }
+            if (typeof msg.features.coverArt.preferGenerated === "boolean") {
+                serverSettings.features.coverArt.preferGenerated = msg.features.coverArt.preferGenerated;
             }
             if (typeof msg.features.coverArt.memoryPoolMB === "number") {
                 serverSettings.features.coverArt.memoryPoolMB = Math.max(1, Math.round(msg.features.coverArt.memoryPoolMB));

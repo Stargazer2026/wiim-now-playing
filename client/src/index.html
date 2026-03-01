@@ -200,11 +200,18 @@
                                         <input class="form-check-input" type="checkbox" id="chkCoverArtEnabled">
                                         <label class="form-check-label" for="chkCoverArtEnabled">Enable online cover art fallback</label>
                                     </div>
+                                    <div class="form-check form-switch mt-2">
+                                        <input class="form-check-input" type="checkbox" id="chkCoverArtPreferGenerated">
+                                        <label class="form-check-label" for="chkCoverArtPreferGenerated">Prefer generated cover art when available</label>
+                                    </div>
+                                    <div class="form-text">If enabled, official/fake art is shown first and replaced when generated art is ready.</div>
                                     <div class="mt-2">
                                         <label class="form-label" for="selCoverArtProvider">Cover source</label>
                                         <select class="form-select" id="selCoverArtProvider">
                                             <option value="caa">Cover Art Archive (MusicBrainz)</option>
                                             <option value="itunes">iTunes / Apple Music Search API</option>
+                                            <option value="ai">AI generated image (Pollinations, legacy/experimental)</option>
+                                            <option value="openai">AI generated image (OpenAI API key required)</option>
                                         </select>
                                     </div>
                                     <div class="mt-2">
@@ -215,8 +222,14 @@
                                         </div>
                                     </div>
                                     <div class="form-text mt-2">
-                                        By enabling CAA lookups, you confirm you are responsible for complying with the
-                                        <a href="https://coverartarchive.org/" target="_blank" rel="noopener noreferrer">Cover Art Archive terms and licenses</a>.
+                                        By enabling external providers, you confirm you are responsible for complying with their terms and licenses
+                                        (<a href="https://coverartarchive.org/" target="_blank" rel="noopener noreferrer">Cover Art Archive</a>,
+                                        <a href="https://platform.openai.com/docs/guides/image-generation" target="_blank" rel="noopener noreferrer">OpenAI Images API</a>,
+                                        <a href="https://pollinations.ai/" target="_blank" rel="noopener noreferrer">Pollinations (legacy/experimental)</a>).
+                                    </div>
+                                    <div class="alert alert-warning mt-2 mb-0" role="alert">
+                                        OpenAI image generation requires active API billing. If billing hard/soft limits are reached,
+                                        cover generation fails (e.g. <code>billing_hard_limit_reached</code> / HTTP 400).
                                     </div>
                                 </div>
 
