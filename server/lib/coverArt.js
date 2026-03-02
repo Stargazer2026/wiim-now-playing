@@ -1,13 +1,21 @@
+const fs = require("fs");
 const http = require("http");
 const https = require("https");
+const path = require("path");
 const crypto = require("crypto");
 
+const lib = require("./lib.js");
+const { generateCoverConcept } = require("./coverConceptService.js");
+const { getLyricsSnippet } = require("./lyricsSnippet.js");
 const log = require("debug")("lib:coverArt");
 
 const lookupCache = new Map();
 const imageCache = new Map();
 const transientFailureCache = new Map();
 const generationResultCache = new Map();
+const persistentTrackCache = new Map();
+const persistentImageIndex = new Map();
+const promptHistoryByTrack = new Map();
 let imageCacheSizeBytes = 0;
 
 const ONE_MB = 1024 * 1024;
@@ -16,8 +24,100 @@ const AI_RETRYABLE_HTTP_CODES = new Set([429, 500, 502, 503, 504, 520, 522, 524,
 const OPENAI_API_URL = "https://api.openai.com/v1/images/generations";
 const OPENAI_API_TIMEOUT_MS = Math.max(30000, Number(process.env.OPENAI_API_TIMEOUT_MS) || 180000);
 const OPENAI_MAX_RESPONSE_BYTES = Math.max(2 * ONE_MB, Number(process.env.OPENAI_MAX_RESPONSE_BYTES) || 20 * ONE_MB);
+const PERSISTENT_CACHE_DIR = path.resolve(process.env.WNP_COVER_ART_CACHE_DIR || "../cover-art-cache");
+const PERSISTENT_INDEX_FILE = path.join(PERSISTENT_CACHE_DIR, "index.json");
 
 const sanitize = (value) => (typeof value === "string" ? value.trim() : "");
+const hash = (value) => crypto.createHash("sha1").update(String(value)).digest("hex").slice(0, 16);
+
+const ensurePersistentStorage = () => {
+    if (!fs.existsSync(PERSISTENT_CACHE_DIR)) {
+        fs.mkdirSync(PERSISTENT_CACHE_DIR, { recursive: true });
+    }
+};
+
+const getVariantKey = (variantIndex, quality) => `${Number(variantIndex) || 0}|${quality || "low"}`;
+
+const loadPersistentIndex = () => {
+    ensurePersistentStorage();
+    if (!fs.existsSync(PERSISTENT_INDEX_FILE)) {
+        return;
+    }
+    try {
+        const parsed = JSON.parse(fs.readFileSync(PERSISTENT_INDEX_FILE, "utf8"));
+        const tracks = parsed?.tracks && typeof parsed.tracks === "object" ? parsed.tracks : {};
+        const images = parsed?.images && typeof parsed.images === "object" ? parsed.images : {};
+        const promptHistory = parsed?.promptHistory && typeof parsed.promptHistory === "object" ? parsed.promptHistory : {};
+
+        Object.keys(images).forEach((cacheKey) => {
+            const entry = images[cacheKey];
+            if (!entry || typeof entry.fileName !== "string") {
+                return;
+            }
+            const filePath = path.join(PERSISTENT_CACHE_DIR, entry.fileName);
+            if (!fs.existsSync(filePath)) {
+                return;
+            }
+            persistentImageIndex.set(cacheKey, {
+                fileName: entry.fileName,
+                contentType: entry.contentType || "image/png",
+                bytes: typeof entry.bytes === "number" ? entry.bytes : 0,
+                sourceUrl: entry.sourceUrl || "openai:persistent",
+                variantIndex: typeof entry.variantIndex === "number" ? entry.variantIndex : 0,
+                aiDebug: entry.aiDebug && typeof entry.aiDebug === "object" ? entry.aiDebug : null
+            });
+        });
+
+        Object.keys(tracks).forEach((trackKey) => {
+            const mapping = tracks[trackKey];
+            if (!mapping || typeof mapping !== "object") {
+                return;
+            }
+            const usable = {};
+            Object.keys(mapping).forEach((variantKey) => {
+                const cacheKey = mapping[variantKey];
+                if (typeof cacheKey === "string" && persistentImageIndex.has(cacheKey)) {
+                    usable[variantKey] = cacheKey;
+                }
+            });
+            if (Object.keys(usable).length) {
+                persistentTrackCache.set(trackKey, usable);
+            }
+        });
+
+        Object.keys(promptHistory).forEach((trackKey) => {
+            if (Array.isArray(promptHistory[trackKey])) {
+                promptHistoryByTrack.set(trackKey, promptHistory[trackKey].filter((line) => typeof line === "string").slice(-12));
+            }
+        });
+    } catch (error) {
+        log("loadPersistentIndex error", { message: error.message });
+    }
+};
+
+const savePersistentIndex = () => {
+    ensurePersistentStorage();
+    const tracks = {};
+    const images = {};
+    const promptHistory = {};
+    persistentTrackCache.forEach((mapping, trackKey) => {
+        tracks[trackKey] = mapping;
+    });
+    persistentImageIndex.forEach((entry, cacheKey) => {
+        images[cacheKey] = {
+            fileName: entry.fileName,
+            contentType: entry.contentType,
+            bytes: entry.bytes,
+            sourceUrl: entry.sourceUrl,
+            variantIndex: entry.variantIndex || 0,
+            aiDebug: entry.aiDebug || null
+        };
+    });
+    promptHistoryByTrack.forEach((list, trackKey) => {
+        promptHistory[trackKey] = list;
+    });
+    fs.writeFileSync(PERSISTENT_INDEX_FILE, JSON.stringify({ tracks, images, promptHistory }, null, 2), "utf8");
+};
 
 const getTrackFields = (metadata) => {
     const track = metadata && metadata.trackMetaData ? metadata.trackMetaData : {};
@@ -28,58 +128,12 @@ const getTrackFields = (metadata) => {
     };
 };
 
-const getLyricsSnippet = (lyricsPayload) => {
-    const source = lyricsPayload && typeof lyricsPayload === "object"
-        ? (lyricsPayload.plainLyrics || lyricsPayload.syncedLyrics || "")
-        : "";
-    if (!source || typeof source !== "string") {
-        return "";
-    }
-
-    return source
-        .split(/\r?\n/)
-        .map((line) => line.replace(/^\[[^\]]+\]\s*/, "").trim())
-        .filter((line) => line && !line.startsWith("#"))
-        .slice(0, 4)
-        .join(" ")
-        .slice(0, 320);
-};
-
-const buildAIPrompt = (artist, album, title, lyricsPayload) => {
-    const parts = [
-        `Create cover art for the song \"${title}\" by ${artist}`,
-        album ? `from the album \"${album}\"` : "",
-        "Cinematic digital painting, detailed, no text, no logos, no watermarks."
-    ].filter(Boolean);
-
-    const lyricsSnippet = getLyricsSnippet(lyricsPayload);
-    if (lyricsSnippet) {
-        parts.push(`Mood and imagery inspired by these lyrics: ${lyricsSnippet}`);
-    }
-
-    return parts.join(" ");
-};
-
 const getTrackKey = (metadata) => {
     const fields = getTrackFields(metadata);
     return `${fields.artist}|${fields.album}|${fields.title}`.toLowerCase();
 };
 
-const hash = (value) => crypto.createHash("sha1").update(String(value)).digest("hex").slice(0, 16);
-
-
-const getGenerationCacheKey = (provider, trackKey) => `${provider || "unknown"}|${trackKey || ""}`;
-
-const getCachedGenerationResult = (provider, trackKey) => {
-    const key = getGenerationCacheKey(provider, trackKey);
-    return generationResultCache.get(key) || null;
-};
-
-const setCachedGenerationResult = (provider, trackKey, value) => {
-    const key = getGenerationCacheKey(provider, trackKey);
-    generationResultCache.set(key, value);
-};
-
+const getSongKeyHash = (metadata) => hash(getTrackKey(metadata));
 
 const requestJson = (url) => new Promise((resolve, reject) => {
     const parsedUrl = new URL(url);
@@ -87,21 +141,10 @@ const requestJson = (url) => new Promise((resolve, reject) => {
     const req = client.get(parsedUrl, { timeout: 4500, headers: { "User-Agent": "wiim-now-playing/cover-art" } }, (res) => {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
             res.resume();
-            const redirectUrl = new URL(res.headers.location, parsedUrl).toString();
-            resolve(requestJson(redirectUrl));
+            resolve(requestJson(new URL(res.headers.location, parsedUrl).toString()));
             return;
         }
         if (res.statusCode !== 200) {
-            log("requestJson non-200", {
-                url: parsedUrl.toString(),
-                statusCode: res.statusCode,
-                headers: {
-                    server: res.headers.server,
-                    via: res.headers.via,
-                    cfRay: res.headers["cf-ray"],
-                    contentType: res.headers["content-type"]
-                }
-            });
             res.resume();
             reject(new Error(`HTTP ${res.statusCode}`));
             return;
@@ -125,11 +168,9 @@ const requestJson = (url) => new Promise((resolve, reject) => {
     req.on("error", reject);
 });
 
-
 const postJson = (url, body, headers = {}) => new Promise((resolve, reject) => {
-    const parsedUrl = new URL(url);
     const payload = JSON.stringify(body);
-    const req = https.request(parsedUrl, {
+    const req = https.request(new URL(url), {
         method: "POST",
         timeout: OPENAI_API_TIMEOUT_MS,
         headers: {
@@ -148,19 +189,9 @@ const postJson = (url, body, headers = {}) => new Promise((resolve, reject) => {
         });
         res.on("end", () => {
             if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
-                log("postJson non-200", {
-                    url,
-                    statusCode: res.statusCode,
-                    headers: {
-                        server: res.headers.server,
-                        contentType: res.headers["content-type"]
-                    },
-                    bodyPreview: data.replace(/\s+/g, " ").trim().slice(0, 400)
-                });
                 const error = new Error(`HTTP ${res.statusCode}`);
                 error.statusCode = res.statusCode;
                 error.bodyPreview = data.replace(/\s+/g, " ").trim().slice(0, 400);
-                error.requestUrl = url;
                 reject(error);
                 return;
             }
@@ -176,14 +207,14 @@ const postJson = (url, body, headers = {}) => new Promise((resolve, reject) => {
     req.write(payload);
     req.end();
 });
+
 const requestImage = (url) => new Promise((resolve, reject) => {
     const parsedUrl = new URL(url);
     const client = parsedUrl.protocol === "https:" ? https : http;
     const req = client.get(parsedUrl, { timeout: 6000, headers: { "User-Agent": "wiim-now-playing/cover-art" } }, (res) => {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
             res.resume();
-            const redirectUrl = new URL(res.headers.location, parsedUrl).toString();
-            resolve(requestImage(redirectUrl));
+            resolve(requestImage(new URL(res.headers.location, parsedUrl).toString()));
             return;
         }
         if (res.statusCode !== 200) {
@@ -194,31 +225,9 @@ const requestImage = (url) => new Promise((resolve, reject) => {
                 }
             });
             res.on("end", () => {
-                const bodyPreview = errorBody.replace(/\s+/g, " ").trim().slice(0, 400);
-                const cloudflareErrorMatch = bodyPreview.match(/error code:\s*(\d{3,4})/i);
-                const cfErrorCode = cloudflareErrorMatch ? parseInt(cloudflareErrorMatch[1], 10) : null;
-                const diagnostic = {
-                    url: parsedUrl.toString(),
-                    statusCode: res.statusCode,
-                    headers: {
-                        server: res.headers.server,
-                        via: res.headers.via,
-                        cfRay: res.headers["cf-ray"],
-                        contentType: res.headers["content-type"]
-                    },
-                    cfErrorCode,
-                    bodyPreview
-                };
-                if (cfErrorCode === 1033) {
-                    diagnostic.hint = "Cloudflare 1033: origin/tunnel unreachable (likely upstream Pollinations outage or routing issue)";
-                }
-                log("requestImage non-200", diagnostic);
                 const error = new Error(`HTTP ${res.statusCode}`);
                 error.statusCode = res.statusCode;
-                error.responseHeaders = diagnostic.headers;
-                error.bodyPreview = bodyPreview;
-                error.cfErrorCode = cfErrorCode;
-                error.requestUrl = parsedUrl.toString();
+                error.bodyPreview = errorBody.replace(/\s+/g, " ").trim().slice(0, 400);
                 reject(error);
             });
             return;
@@ -239,13 +248,7 @@ const requestImage = (url) => new Promise((resolve, reject) => {
             }
             chunks.push(chunk);
         });
-        res.on("end", () => {
-            resolve({
-                buffer: Buffer.concat(chunks),
-                contentType,
-                bytes: size
-            });
-        });
+        res.on("end", () => resolve({ buffer: Buffer.concat(chunks), contentType, bytes: size }));
     });
     req.on("timeout", () => req.destroy(new Error("Request timeout")));
     req.on("error", reject);
@@ -261,8 +264,30 @@ const touchImageEntry = (key) => {
     return entry;
 };
 
+const loadPersistentImageIntoMemory = (cacheKey) => {
+    const meta = persistentImageIndex.get(cacheKey);
+    if (!meta) {
+        return null;
+    }
+    try {
+        const buffer = fs.readFileSync(path.join(PERSISTENT_CACHE_DIR, meta.fileName));
+        const entry = {
+            buffer,
+            contentType: meta.contentType || "image/png",
+            bytes: buffer.length,
+            provider: "openai",
+            sourceUrl: meta.sourceUrl || "openai:persistent"
+        };
+        imageCache.set(cacheKey, entry);
+        imageCacheSizeBytes += entry.bytes;
+        return entry;
+    } catch {
+        return null;
+    }
+};
+
 const getImagePoolBytes = (serverSettings) => {
-    const maxMB = serverSettings && serverSettings.features && serverSettings.features.coverArt && typeof serverSettings.features.coverArt.memoryPoolMB === "number"
+    const maxMB = serverSettings?.features?.coverArt && typeof serverSettings.features.coverArt.memoryPoolMB === "number"
         ? Math.max(0, serverSettings.features.coverArt.memoryPoolMB)
         : 100;
     return Math.floor(maxMB * ONE_MB);
@@ -283,14 +308,10 @@ const normalizeForQuery = (value) => sanitize(value).replace(/\(([^)]*remaster[^
 const lookupFromITunes = async (artist, album, title) => {
     const term = album ? `${artist} ${album}` : `${artist} ${title}`;
     const payload = await requestJson(`https://itunes.apple.com/search?entity=album&limit=5&term=${encodeURIComponent(term)}`);
-    if (!payload || !Array.isArray(payload.results) || payload.results.length === 0) {
+    if (!payload || !Array.isArray(payload.results) || payload.results.length === 0 || !payload.results[0].artworkUrl100) {
         return null;
     }
-    const best = payload.results[0];
-    if (!best.artworkUrl100) {
-        return null;
-    }
-    return best.artworkUrl100.replace("100x100bb", "600x600bb");
+    return { lookup: payload.results[0].artworkUrl100.replace("100x100bb", "600x600bb") };
 };
 
 const lookupFromCAA = async (artist, album) => {
@@ -303,33 +324,8 @@ const lookupFromCAA = async (artist, album) => {
     if (!Array.isArray(groups) || groups.length === 0 || !groups[0].id) {
         return null;
     }
-    return `https://coverartarchive.org/release-group/${groups[0].id}/front-500`;
+    return { lookup: `https://coverartarchive.org/release-group/${groups[0].id}/front-500` };
 };
-
-const lookupFromAiPollinations = async (artist, album, title, lyricsPayload) => {
-    if (!artist || !title) {
-        return null;
-    }
-
-    const prompt = buildAIPrompt(artist, album, title, lyricsPayload);
-    const encodedPrompt = encodeURIComponent(prompt);
-    const query = "width=1024&height=1024&model=flux&nologo=true";
-    const urls = [
-        `https://image.pollinations.ai/prompt/${encodedPrompt}?${query}`,
-        `https://pollinations.ai/prompt/${encodedPrompt}?${query}`,
-        `https://pollinations.ai/p/${encodedPrompt}?${query}`
-    ];
-    log("lookupFromAiPollinations", {
-        artist,
-        album,
-        title,
-        promptLength: prompt.length,
-        promptPreview: prompt.slice(0, 180),
-        candidateUrls: urls
-    });
-    return urls;
-};
-
 
 const extractOpenAiImage = (response) => {
     if (!response || !Array.isArray(response.data) || !response.data[0]) {
@@ -337,10 +333,7 @@ const extractOpenAiImage = (response) => {
     }
     const first = response.data[0];
     if (first.url && typeof first.url === "string") {
-        return {
-            mode: "url",
-            url: first.url
-        };
+        return { mode: "url", url: first.url };
     }
     if (first.b64_json && typeof first.b64_json === "string") {
         const buffer = Buffer.from(first.b64_json, "base64");
@@ -349,63 +342,95 @@ const extractOpenAiImage = (response) => {
         }
         return {
             mode: "inline",
-            image: {
-                buffer,
-                contentType: "image/png",
-                bytes: buffer.length,
-                sourceUrl: "openai:b64_json"
-            }
+            image: { buffer, contentType: "image/png", bytes: buffer.length, sourceUrl: "openai:b64_json" }
         };
     }
     return null;
 };
 
-const lookupFromOpenAi = async (artist, album, title, lyricsPayload) => {
+const lookupFromOpenAi = async (artist, album, title, lyricsPayload, serverSettings, options = {}) => {
     if (!artist || !title) {
         return null;
     }
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-        log("lookupFromOpenAi skipped: OPENAI_API_KEY not set");
-        return null;
+        return { errorCode: "openai_api_key_missing" };
     }
 
-    const prompt = buildAIPrompt(artist, album, title, lyricsPayload);
-    const payload = {
-        model: "gpt-image-1-mini",
-        prompt,
-        size: "1024x1024",
-        quality: "low"
-    };
-    const response = await postJson(OPENAI_API_URL, payload, {
-        Authorization: `Bearer ${apiKey}`
-    });
-    const parsed = extractOpenAiImage(response);
-    if (!parsed) {
-        log("lookupFromOpenAi missing image payload", {
-            hasData: Boolean(response && response.data),
-            firstKeys: response && Array.isArray(response.data) && response.data[0] ? Object.keys(response.data[0]) : []
-        });
-        return null;
+    const tokenBudget = Number(serverSettings?.features?.coverArt?.openAiTokenBudget || 0);
+    if (tokenBudget <= 0) {
+        return { errorCode: "openai_token_budget_exhausted" };
     }
 
-    const usage = response && response.usage ? response.usage : null;
-    log("lookupFromOpenAi", {
+    const variantIndex = Math.max(0, Number(options.variantIndex) || 0);
+    const quality = options.quality || "low";
+    const trackKey = `${artist}|${album}|${title}`.toLowerCase();
+    const conceptSeed = hash(`${artist}|${album}|${title}|${variantIndex}`);
+    const previousPrompts = promptHistoryByTrack.get(trackKey) || [];
+
+    const conceptResult = await generateCoverConcept({
         artist,
         album,
         title,
-        promptLength: prompt.length,
-        promptPreview: prompt.slice(0, 180),
-        resultMode: parsed.mode,
-        imageUrl: parsed.url || null,
-        imageBytes: parsed.image ? parsed.image.bytes : null,
-        promptTokens: usage ? usage.prompt_tokens : null,
-        totalTokens: usage ? usage.total_tokens : null
+        lyricsPayload,
+        variantIndex,
+        conceptSeed,
+        previousPrompts
     });
-    return parsed.mode === "url" ? parsed.url : parsed.image;
+
+    const finalPrompt = conceptResult?.concept?.finalImagePrompt;
+    if (!finalPrompt) {
+        return { errorCode: "concept_generation_failed" };
+    }
+
+    const imageModel = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1-mini";
+    const imageSize = process.env.OPENAI_IMAGE_SIZE || "1024x1024";
+    const response = await postJson(OPENAI_API_URL, {
+        model: imageModel,
+        prompt: finalPrompt,
+        size: imageSize,
+        quality
+    }, {
+        Authorization: `Bearer ${apiKey}`
+    });
+
+    const parsed = extractOpenAiImage(response);
+    if (!parsed) {
+        return null;
+    }
+    const usage = response && response.usage ? response.usage : null;
+    const spentTokens = usage && typeof usage.total_tokens === "number" ? usage.total_tokens : 0;
+
+    const history = promptHistoryByTrack.get(trackKey) || [];
+    history.push(finalPrompt);
+    promptHistoryByTrack.set(trackKey, history.slice(-12));
+
+    return {
+        lookup: parsed.mode === "url" ? parsed.url : parsed.image,
+        spentTokens,
+        concept: conceptResult.concept,
+        conceptDebug: conceptResult.debug,
+        generationSettings: {
+            textModel: process.env.OPENAI_CONCEPT_MODEL || "gpt-4.1-mini",
+            imageModel,
+            imageSize,
+            imageQuality: quality,
+            variantIndex,
+            conceptSeed,
+            lyricsSnippet: getLyricsSnippet(lyricsPayload),
+            promptHistoryCount: previousPrompts.length,
+            concept: conceptResult?.concept || null,
+            conceptDebug: conceptResult?.debug || null,
+            textModelInputPrompt: conceptResult?.debug?.conceptInputText || "",
+            textModelOutputText: conceptResult?.debug?.conceptOutputText || JSON.stringify(conceptResult?.concept || {}, null, 2),
+            finalImagePrompt: finalPrompt,
+            imageModelInputPrompt: finalPrompt,
+            alternativePrompts: conceptResult?.alternatives || []
+        }
+    };
 };
 
-const resolveLookupUrl = async (metadata, serverSettings, lyricsPayload) => {
+const resolveLookupUrl = async (metadata, serverSettings, lyricsPayload, options = {}) => {
     const { artist, album, title } = getTrackFields(metadata);
     const cleanArtist = normalizeForQuery(artist);
     const cleanAlbum = normalizeForQuery(album);
@@ -419,42 +444,25 @@ const resolveLookupUrl = async (metadata, serverSettings, lyricsPayload) => {
     if (provider === "itunes") {
         return lookupFromITunes(cleanArtist, cleanAlbum, cleanTitle);
     }
-    if (provider === "ai") {
-        return lookupFromAiPollinations(cleanArtist, cleanAlbum, cleanTitle, lyricsPayload);
-    }
     if (provider === "openai") {
-        return lookupFromOpenAi(cleanArtist, cleanAlbum, cleanTitle, lyricsPayload);
+        return lookupFromOpenAi(cleanArtist, cleanAlbum, cleanTitle, lyricsPayload, serverSettings, options);
     }
     return lookupFromCAA(cleanArtist, cleanAlbum);
 };
 
-
 const getHttpStatusCodeFromError = (error) => {
-    if (!error) {
-        return null;
-    }
-    if (typeof error.statusCode === "number") {
-        return error.statusCode;
-    }
-    if (!error.message || typeof error.message !== "string") {
-        return null;
-    }
+    if (!error) return null;
+    if (typeof error.statusCode === "number") return error.statusCode;
+    if (!error.message || typeof error.message !== "string") return null;
     const match = error.message.match(/^HTTP\s+(\d{3})$/);
-    if (!match) {
-        return null;
-    }
-    return parseInt(match[1], 10);
+    return match ? parseInt(match[1], 10) : null;
 };
 
 const shouldSuppressTransientFailure = (trackKey, provider) => {
-    if (!trackKey || !provider) {
-        return false;
-    }
+    if (!trackKey || !provider) return false;
     const cacheKey = `${provider}|${trackKey}`;
     const expiresAt = transientFailureCache.get(cacheKey);
-    if (!expiresAt) {
-        return false;
-    }
+    if (!expiresAt) return false;
     if (expiresAt <= Date.now()) {
         transientFailureCache.delete(cacheKey);
         return false;
@@ -463,159 +471,164 @@ const shouldSuppressTransientFailure = (trackKey, provider) => {
 };
 
 const cacheTransientFailure = (trackKey, provider) => {
-    if (!trackKey || !provider) {
-        return;
-    }
+    if (!trackKey || !provider) return;
     transientFailureCache.set(`${provider}|${trackKey}`, Date.now() + TRANSIENT_FAILURE_TTL_MS);
 };
 
-const resolveAlbumArt = async (metadata, serverSettings, lyricsPayload) => {
+const getGenerationCacheKey = (provider, trackKey, variantIndex, quality) => `${provider}|${trackKey}|${variantIndex}|${quality}`;
+
+const getAiDebugForCacheKey = (cacheKey) => {
+    if (!cacheKey) {
+        return null;
+    }
+    const meta = persistentImageIndex.get(cacheKey);
+    return meta && meta.aiDebug ? meta.aiDebug : null;
+};
+
+const persistGeneratedImage = (trackKey, cacheKey, image, sourceUrl, variantIndex, quality, aiDebug = null) => {
+    ensurePersistentStorage();
+    const extension = image.contentType === "image/jpeg" ? "jpg" : "png";
+    const fileName = `${cacheKey}.${extension}`;
+    fs.writeFileSync(path.join(PERSISTENT_CACHE_DIR, fileName), image.buffer);
+    persistentImageIndex.set(cacheKey, {
+        fileName,
+        contentType: image.contentType,
+        bytes: image.bytes,
+        sourceUrl: sourceUrl || "openai:persistent",
+        variantIndex,
+        aiDebug
+    });
+
+    const variantKey = getVariantKey(variantIndex, quality);
+    const mapping = persistentTrackCache.get(trackKey) || {};
+    mapping[variantKey] = cacheKey;
+    persistentTrackCache.set(trackKey, mapping);
+
+    savePersistentIndex();
+};
+
+const resolveAlbumArt = async (metadata, serverSettings, lyricsPayload, options = {}) => {
     const key = getTrackKey(metadata);
     if (!key) {
         return null;
     }
-    const provider = serverSettings && serverSettings.features && serverSettings.features.coverArt ? serverSettings.features.coverArt.provider : null;
-    const isGeneratedProvider = provider === "ai" || provider === "openai";
+    const provider = serverSettings?.features?.coverArt?.provider || null;
+    const variantIndex = Math.max(0, Number(options.variantIndex) || 0);
+    const quality = options.quality || "low";
+    const variantKey = getVariantKey(variantIndex, quality);
+    const forceRefresh = Boolean(options.forceRefresh);
+    const isGeneratedProvider = provider === "openai";
 
-    if (isGeneratedProvider) {
-        const prior = getCachedGenerationResult(provider, key);
-        if (prior && prior.status === "ok" && prior.cacheKey) {
-            const cachedImage = touchImageEntry(prior.cacheKey);
-            if (cachedImage) {
+    if (isGeneratedProvider && !forceRefresh) {
+        const mapping = persistentTrackCache.get(key);
+        const persistentCacheKey = mapping ? mapping[variantKey] : null;
+        if (persistentCacheKey) {
+            const cached = touchImageEntry(persistentCacheKey) || loadPersistentImageIntoMemory(persistentCacheKey);
+            if (cached) {
                 return {
-                    cacheKey: prior.cacheKey,
+                    cacheKey: persistentCacheKey,
                     provider,
-                    trackKey: key
+                    trackKey: key,
+                    variantIndex,
+                    songKey: getSongKeyHash(metadata),
+                    aiDebug: getAiDebugForCacheKey(persistentCacheKey)
                 };
             }
-            log("resolveAlbumArt generation cache miss after eviction", {
+        }
+    }
+
+    const generationCacheKey = getGenerationCacheKey(provider, key, variantIndex, quality);
+    const prior = generationResultCache.get(generationCacheKey);
+    if (!forceRefresh && prior?.status === "ok" && prior.cacheKey) {
+        const cachedImage = touchImageEntry(prior.cacheKey) || loadPersistentImageIntoMemory(prior.cacheKey);
+        if (cachedImage) {
+            return {
+                cacheKey: prior.cacheKey,
                 provider,
                 trackKey: key,
-                cacheKey: prior.cacheKey
-            });
-            return null;
+                variantIndex,
+                songKey: getSongKeyHash(metadata),
+                aiDebug: prior.aiDebug || getAiDebugForCacheKey(prior.cacheKey)
+            };
         }
-        if (prior && (prior.status === "failed" || prior.status === "in_flight")) {
-            return null;
-        }
+    }
+    if (!forceRefresh && prior?.status === "in_flight") {
+        return {
+            status: "in_flight",
+            provider,
+            trackKey: key,
+            variantIndex,
+            songKey: getSongKeyHash(metadata)
+        };
+    }
+    if (!forceRefresh && prior?.status === "failed") {
+        return null;
     }
 
     if (shouldSuppressTransientFailure(key, provider)) {
         return null;
     }
-    const lookupCacheKey = isGeneratedProvider ? `${provider}|${key}` : key;
+    const lookupCacheKey = `${provider}|${key}|${variantIndex}|${quality}|${forceRefresh ? "force" : "normal"}`;
     if (lookupCache.has(lookupCacheKey)) {
         return lookupCache.get(lookupCacheKey);
     }
 
-    if (isGeneratedProvider) {
-        setCachedGenerationResult(provider, key, { status: "in_flight" });
-    }
+    generationResultCache.set(generationCacheKey, { status: "in_flight" });
 
     const pending = (async () => {
         try {
-            const lookup = await resolveLookupUrl(metadata, serverSettings, lyricsPayload);
-            if (!lookup) {
-                if (isGeneratedProvider) {
-                    setCachedGenerationResult(provider, key, { status: "failed", reason: "no-lookup" });
-                }
+            const lookupResponse = await resolveLookupUrl(metadata, serverSettings, lyricsPayload, { variantIndex, quality, forceRefresh });
+            if (!lookupResponse) {
+                generationResultCache.set(generationCacheKey, { status: "failed", reason: "no-lookup" });
                 return null;
             }
-            let image = null;
-            let resolvedUrl = null;
-            let lastError = null;
+            if (lookupResponse.errorCode) {
+                generationResultCache.set(generationCacheKey, { status: "failed", reason: lookupResponse.errorCode });
+                return { errorCode: lookupResponse.errorCode, provider, trackKey: key, variantIndex, songKey: getSongKeyHash(metadata) };
+            }
 
+            const lookup = lookupResponse.lookup;
             const isInlineImage = lookup && typeof lookup === "object" && Buffer.isBuffer(lookup.buffer) && typeof lookup.contentType === "string";
-            if (isInlineImage) {
-                image = {
-                    buffer: lookup.buffer,
-                    contentType: lookup.contentType,
-                    bytes: lookup.bytes || lookup.buffer.length
+            const image = isInlineImage
+                ? { buffer: lookup.buffer, contentType: lookup.contentType, bytes: lookup.bytes || lookup.buffer.length }
+                : await requestImage(lookup);
+            const resolvedUrl = isInlineImage ? (lookup.sourceUrl || `${provider}:inline`) : lookup;
+
+            const cacheKey = hash(`${key}|${resolvedUrl}|${variantKey}`);
+            imageCache.set(cacheKey, { ...image, provider, sourceUrl: resolvedUrl, trackKey: key });
+            imageCacheSizeBytes += image.bytes;
+            enforceImagePoolLimit(serverSettings);
+
+            const spentTokens = lookupResponse.spentTokens || 0;
+            if (spentTokens > 0) {
+                const budgetValue = Number(serverSettings?.features?.coverArt?.openAiTokenBudget || 0);
+                const remaining = Math.max(0, budgetValue - spentTokens);
+                serverSettings.features.coverArt.openAiTokenBudget = remaining;
+                lib.saveSettings(serverSettings);
+            }
+
+            persistGeneratedImage(key, cacheKey, image, resolvedUrl, variantIndex, quality, lookupResponse.generationSettings || null);
+            generationResultCache.set(generationCacheKey, { status: "ok", cacheKey, aiDebug: lookupResponse.generationSettings || null });
+
+            const result = { cacheKey, provider, trackKey: key, variantIndex, songKey: getSongKeyHash(metadata) };
+            result.aiDebug = lookupResponse.generationSettings || null;
+            if (String(process.env.DEBUG_COVER_CONCEPTS || "").toLowerCase() === "true") {
+                result.debug = lookupResponse.conceptDebug || {
+                    visualUniverse: lookupResponse?.concept?.visualUniverse || null,
+                    variantIndex,
+                    promptPreview: (lookupResponse?.concept?.finalImagePrompt || "").slice(0, 200)
                 };
-                resolvedUrl = lookup.sourceUrl || `${provider}:inline`;
-            } else {
-                const candidateUrls = Array.isArray(lookup) ? lookup : [lookup];
-                for (const candidateUrl of candidateUrls) {
-                    try {
-                        log("resolveAlbumArt fetch image", {
-                            provider,
-                            trackKey: key,
-                            url: candidateUrl
-                        });
-                        image = await requestImage(candidateUrl);
-                        resolvedUrl = candidateUrl;
-                        break;
-                    } catch (error) {
-                        lastError = error;
-                        log("resolveAlbumArt candidate failed", {
-                            provider,
-                            trackKey: key,
-                            url: candidateUrl,
-                            statusCode: getHttpStatusCodeFromError(error),
-                            cfErrorCode: error.cfErrorCode || null,
-                            message: error.message
-                        });
-                    }
-                }
-                if (!image || !resolvedUrl) {
-                    throw lastError || new Error("All AI candidate URLs failed");
-                }
-            }
-            const cacheKey = hash(`${key}|${resolvedUrl}`);
-            const cached = touchImageEntry(cacheKey);
-            if (!cached) {
-                imageCache.set(cacheKey, {
-                    ...image,
-                    provider: serverSettings.features.coverArt.provider,
-                    sourceUrl: resolvedUrl,
-                    trackKey: key
-                });
-                imageCacheSizeBytes += image.bytes;
-                enforceImagePoolLimit(serverSettings);
-            }
-            const result = {
-                cacheKey,
-                provider: serverSettings.features.coverArt.provider,
-                trackKey: key
-            };
-            if (isGeneratedProvider) {
-                setCachedGenerationResult(provider, key, {
-                    status: "ok",
-                    cacheKey
-                });
             }
             return result;
         } catch (error) {
             const statusCode = getHttpStatusCodeFromError(error);
-            if ((provider === "ai" || provider === "openai") && statusCode && AI_RETRYABLE_HTTP_CODES.has(statusCode)) {
+            if (provider === "openai" && statusCode && AI_RETRYABLE_HTTP_CODES.has(statusCode)) {
                 cacheTransientFailure(key, provider);
-                log("resolveAlbumArt transient AI error", {
-                    statusCode,
-                    cfErrorCode: error.cfErrorCode || null,
-                    trackKey: key,
-                    requestUrl: error.requestUrl || null,
-                    bodyPreview: error.bodyPreview || null,
-                    message: error.message,
-                    note: "suppressing retries briefly"
-                });
-                if (isGeneratedProvider) {
-                    setCachedGenerationResult(provider, key, { status: "failed", reason: "transient-error" });
-                }
-                return null;
+                generationResultCache.set(generationCacheKey, { status: "failed", reason: "transient-error" });
+                return { errorCode: "openai_transient_error", provider, trackKey: key, variantIndex, songKey: getSongKeyHash(metadata), statusCode };
             }
-            log("resolveAlbumArt error", {
-                provider,
-                trackKey: key,
-                statusCode,
-                cfErrorCode: error.cfErrorCode || null,
-                requestUrl: error.requestUrl || null,
-                bodyPreview: error.bodyPreview || null,
-                message: error.message
-            });
-            if (isGeneratedProvider) {
-                setCachedGenerationResult(provider, key, { status: "failed", reason: "error" });
-            }
-            return null;
+            generationResultCache.set(generationCacheKey, { status: "failed", reason: "error" });
+            return { errorCode: "openai_request_error", provider, trackKey: key, variantIndex, songKey: getSongKeyHash(metadata), statusCode };
         }
     })();
 
@@ -625,18 +638,20 @@ const resolveAlbumArt = async (metadata, serverSettings, lyricsPayload) => {
     return result;
 };
 
-const getCachedImage = (cacheKey) => touchImageEntry(cacheKey);
+const getCachedImage = (cacheKey) => touchImageEntry(cacheKey) || loadPersistentImageIntoMemory(cacheKey);
 
 const applySettings = (serverSettings) => {
     enforceImagePoolLimit(serverSettings);
 };
 
+loadPersistentIndex();
+
 module.exports = {
     getTrackKey,
+    getSongKeyHash,
     resolveAlbumArt,
     getCachedImage,
     applySettings,
-    buildAIPrompt,
     getLyricsSnippet,
     getHttpStatusCodeFromError,
     extractOpenAiImage

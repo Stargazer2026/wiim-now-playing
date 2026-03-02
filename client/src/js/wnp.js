@@ -11,7 +11,7 @@ WNP.s = {
     locPort: (location.port && location.port != "80" && location.port != "1234") ? location.port : "80",
     rndAlbumArtUri: "./img/fake-album-1.jpg",
     // Device selection
-    aDeviceUI: ["wnpApp", "btnPrev", "btnPlay", "btnNext", "btnRefresh", "selDeviceChoices", "devName", "devNameHolder", "mediaTitle", "mediaSubTitle", "mediaArtist", "mediaAlbum", "mediaBitRate", "mediaBitDepth", "mediaSampleRate", "mediaQualityIdent", "devVol", "btnRepeat", "btnShuffle", "progressPlayed", "progressLeft", "progressPercent", "mediaSource", "albumArt", "bgAlbumArtBlur", "btnDevSelect", "oDeviceList", "btnDevPreset", "oPresetList", "btnDevVolume", "rVolume", "lyricsContainer", "lyricsPrev", "lyricsCurrent", "lyricsNext",  "mediaTitleArtist", "mediaTitleCompact", "mediaArtistCompact", "mediaAlbumQuality", "mediaAlbumCompact", "mediaQualityCompact", "mediaSourceCompact", "mediaSourceFooter"],
+    aDeviceUI: ["wnpApp", "btnPrev", "btnPlay", "btnNext", "btnRefresh", "selDeviceChoices", "devName", "devNameHolder", "mediaTitle", "mediaSubTitle", "mediaArtist", "mediaAlbum", "mediaBitRate", "mediaBitDepth", "mediaSampleRate", "mediaQualityIdent", "devVol", "btnRepeat", "btnShuffle", "progressPlayed", "progressLeft", "progressPercent", "mediaSource", "albumArt", "bgAlbumArtBlur", "btnDevSelect", "oDeviceList", "btnDevPreset", "oPresetList", "btnDevVolume", "rVolume", "lyricsContainer", "lyricsPrev", "lyricsCurrent", "lyricsNext",  "mediaTitleArtist", "mediaTitleCompact", "mediaArtistCompact", "mediaAlbumQuality", "mediaAlbumCompact", "mediaQualityCompact", "mediaSourceCompact", "mediaSourceFooter", "btnCoverArtRefresh", "coverArtNotice"],
     // Server actions to be used in the app
     aServerUI: [
         "btnReboot",
@@ -31,6 +31,7 @@ WNP.s = {
         "chkCoverArtPreferGenerated",
         "selCoverArtProvider",
         "coverArtMemoryPoolMB",
+        "coverArtOpenAiTokenBudget",
         "chkWledEnabled",
         "chkWledQuickToggle",
         "wledHost",
@@ -64,7 +65,9 @@ WNP.d = {
     currentTrackCoverLocked: false,
     pendingTrackCoverUri: null,
     pendingTrackCoverSource: null,
-    currentTrackCoverSource: null
+    currentTrackCoverSource: null,
+    coverArtGenerationInFlight: false,
+    coverArtVariantIndex: 0
 };
 
 // Reference placeholders.
@@ -360,6 +363,36 @@ WNP.setUIListeners = function () {
         });
     }
 
+    if (this.r.coverArtOpenAiTokenBudget) {
+        this.r.coverArtOpenAiTokenBudget.addEventListener("change", function () {
+            var budgetValue = parseInt(this.value, 10);
+            if (isNaN(budgetValue) || budgetValue < 0) {
+                budgetValue = 0;
+            }
+            socket.emit("server-settings-update", {
+                features: {
+                    coverArt: {
+                        openAiTokenBudget: budgetValue
+                    }
+                }
+            });
+        });
+    }
+
+    if (this.r.btnCoverArtRefresh) {
+        this.r.btnCoverArtRefresh.addEventListener("click", function () {
+            if (WNP.d.coverArtGenerationInFlight) {
+                return;
+            }
+            WNP.clearCoverArtNotice();
+            WNP.setCoverArtGenerationInFlight(true);
+            WNP.d.coverArtVariantIndex += 1;
+            socket.emit("cover-art-refresh", {
+                variantIndex: WNP.d.coverArtVariantIndex
+            });
+        });
+    }
+
     if (this.r.chkWledEnabled) {
         this.r.chkWledEnabled.addEventListener("change", function () {
             if (WNP.r.chkWledQuickToggle) {
@@ -598,6 +631,12 @@ WNP.setSocketDefinitions = function () {
         }
         if (WNP.r.coverArtMemoryPoolMB) {
             WNP.r.coverArtMemoryPoolMB.value = (msg && msg.features && msg.features.coverArt && typeof msg.features.coverArt.memoryPoolMB === "number") ? msg.features.coverArt.memoryPoolMB : 100;
+        }
+        if (WNP.r.coverArtOpenAiTokenBudget) {
+            var openAiTokenBudget = (msg && msg.features && msg.features.coverArt && typeof msg.features.coverArt.openAiTokenBudget === "number")
+                ? msg.features.coverArt.openAiTokenBudget
+                : 0;
+            WNP.r.coverArtOpenAiTokenBudget.value = openAiTokenBudget;
         }
 
         if (WNP.r.chkLyricsEnabled && !WNP.d.lyricsCookieApplied) {
@@ -962,19 +1001,26 @@ WNP.setSocketDefinitions = function () {
         );
         WNP.d.currentTrackMetadataTimeStamp = msg.metadataTimeStamp || null;
 
+        var nextTrackKey = (trackArtist + "|" + trackAlbum + "|" + trackTitle).trim().toLowerCase();
         var currentTrackInfo = WNP.r.mediaTitle.innerText + "|" + WNP.r.mediaSubTitle.innerText + "|" + WNP.r.mediaArtist.innerText + "|" + WNP.r.mediaAlbum.innerText;
         if (WNP.d.prevTrackInfo !== currentTrackInfo) {
+            var previousTrackKey = WNP.d.currentTrackKey;
+            var coverTrackChanged = previousTrackKey !== nextTrackKey;
             WNP.d.prevTrackInfo = currentTrackInfo; // Remember the last track info
-            WNP.d.currentTrackKey = (trackArtist + "|" + trackAlbum + "|" + trackTitle).trim().toLowerCase();
-            WNP.d.currentTrackCoverLocked = false;
-            WNP.d.pendingTrackCoverUri = null;
-            WNP.d.pendingTrackCoverSource = null;
-            WNP.d.currentTrackCoverSource = null;
+            WNP.d.currentTrackKey = nextTrackKey;
+            if (coverTrackChanged) {
+                WNP.d.currentTrackCoverLocked = false;
+                WNP.d.pendingTrackCoverUri = null;
+                WNP.d.pendingTrackCoverSource = null;
+                WNP.d.currentTrackCoverSource = null;
+                WNP.d.coverArtVariantIndex = 0;
+            }
             console.log("WNP", "Track changed:", currentTrackInfo);
             WNP.logCover("track-changed reset", {
                 trackKey: WNP.d.currentTrackKey,
                 albumArtUriRaw: albumArtUriRaw,
-                albumArtUri: albumArtUri
+                albumArtUri: albumArtUri,
+                coverTrackChanged
             });
             WNP.clearLyrics();
             if (albumArtUriRaw) {
@@ -1042,6 +1088,10 @@ WNP.setSocketDefinitions = function () {
     });
 
     socket.on("cover-art-resolved", function (msg) {
+        WNP.setCoverArtGenerationInFlight(false);
+        if (msg && typeof msg.variantIndex === "number") {
+            WNP.d.coverArtVariantIndex = Math.max(0, Math.round(msg.variantIndex));
+        }
         WNP.logCover("cover-art-resolved event", {
             msgTrackKey: msg && msg.trackKey,
             currentTrackKey: WNP.d.currentTrackKey,
@@ -1058,6 +1108,25 @@ WNP.setSocketDefinitions = function () {
         }
         var coverUri = WNP.buildResolvedCoverUri(msg.cacheKey);
         WNP.trySetTrackCover(coverUri, "resolved");
+        WNP.clearCoverArtNotice();
+        socket.emit("server-settings");
+    });
+
+    socket.on("cover-art-error", function (msg) {
+        WNP.setCoverArtGenerationInFlight(false);
+        if (!msg || !msg.errorCode) {
+            WNP.showCoverArtNotice("Cover-Art-Generierung fehlgeschlagen.");
+            return;
+        }
+        if (msg.errorCode === "openai_token_budget_exhausted") {
+            WNP.showCoverArtNotice("Token-Budget ist aufgebraucht. Bitte im Settings-Feld erhöhen.");
+            return;
+        }
+        if (msg.errorCode === "openai_api_key_missing") {
+            WNP.showCoverArtNotice("OpenAI API Key fehlt auf dem Server (OPENAI_API_KEY).");
+            return;
+        }
+        WNP.showCoverArtNotice("OpenAI Cover-Art API Fehler: " + msg.errorCode);
     });
 
     // On lyrics
@@ -1635,6 +1704,29 @@ WNP.trySetTrackCover = function (imgUri, source) {
         });
     }
     WNP.setAlbumArt(imgUri);
+};
+
+WNP.setCoverArtGenerationInFlight = function (isInFlight) {
+    WNP.d.coverArtGenerationInFlight = Boolean(isInFlight);
+    if (WNP.r.btnCoverArtRefresh) {
+        WNP.r.btnCoverArtRefresh.disabled = WNP.d.coverArtGenerationInFlight;
+    }
+};
+
+WNP.showCoverArtNotice = function (message) {
+    if (!WNP.r.coverArtNotice) {
+        return;
+    }
+    WNP.r.coverArtNotice.innerText = message;
+    WNP.r.coverArtNotice.classList.remove("d-none");
+};
+
+WNP.clearCoverArtNotice = function () {
+    if (!WNP.r.coverArtNotice) {
+        return;
+    }
+    WNP.r.coverArtNotice.innerText = "";
+    WNP.r.coverArtNotice.classList.add("d-none");
 };
 
 /**

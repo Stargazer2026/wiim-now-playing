@@ -87,9 +87,10 @@ let serverSettings = { // Placeholder for current server settings
         },
         "coverArt": {
             "enabled": false,
-            "provider": "caa",
+            "provider": "openai",
             "preferGenerated": false,
-            "memoryPoolMB": 100
+            "memoryPoolMB": 100,
+            "openAiTokenBudget": 0
         },
         "wled": {
             "enabled": false,
@@ -418,6 +419,12 @@ io.on("connection", (socket) => {
         httpApi.callApi(io, msg, serverSettings);
     });
 
+    socket.on("cover-art-refresh", (msg) => {
+        log("Socket event", "cover-art-refresh");
+        const variantIndex = msg && typeof msg.variantIndex === "number" ? Math.max(0, Math.round(msg.variantIndex)) : 0;
+        upnp.emitResolvedCoverArt(io, deviceInfo, serverSettings, { forceRefresh: true, variantIndex });
+    });
+
     // ======================================
     // Server related
 
@@ -475,7 +482,7 @@ io.on("connection", (socket) => {
             }
             if (typeof msg.features.coverArt.provider === "string") {
                 const provider = msg.features.coverArt.provider.toLowerCase();
-                if (provider === "caa" || provider === "itunes" || provider === "ai" || provider === "openai") {
+                if (provider === "caa" || provider === "itunes" || provider === "openai") {
                     serverSettings.features.coverArt.provider = provider;
                 }
             }
@@ -484,6 +491,9 @@ io.on("connection", (socket) => {
             }
             if (typeof msg.features.coverArt.memoryPoolMB === "number") {
                 serverSettings.features.coverArt.memoryPoolMB = Math.max(1, Math.round(msg.features.coverArt.memoryPoolMB));
+            }
+            if (typeof msg.features.coverArt.openAiTokenBudget === "number") {
+                serverSettings.features.coverArt.openAiTokenBudget = Math.max(0, Math.round(msg.features.coverArt.openAiTokenBudget));
             }
             lib.saveSettings(serverSettings);
             coverArt.applySettings(serverSettings);

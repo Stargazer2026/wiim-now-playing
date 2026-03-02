@@ -6,6 +6,7 @@
 // ===========================================================================
 
 const upnpClient = require('../lib/upnpClient.js');
+const coverArt = require('../lib/coverArt.js');
 const lib = require('../lib/lib.js');
 const xml2js = require('xml2js');
 const UPnP = require("upnp-device-client");
@@ -163,6 +164,42 @@ describe('upnpClient.js', () => {
             serverSettings.selectedDevice.actions = [];
             upnpClient.callDeviceAction(io, 'Pause', deviceInfo, serverSettings);
             expect(io.emit).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('emitResolvedCoverArt', () => {
+        beforeEach(() => {
+            serverSettings.features = {
+                coverArt: {
+                    enabled: true,
+                    preferGenerated: true
+                }
+            };
+            deviceInfo.metadata = {
+                trackMetaData: {
+                    'upnp:artist': 'Muse',
+                    'upnp:album': 'Absolution',
+                    'dc:title': 'Hysteria'
+                }
+            };
+        });
+
+        it('emits in_flight progress when generation is already running', async () => {
+            jest.spyOn(coverArt, 'getTrackKey').mockReturnValue('muse|absolution|hysteria');
+            jest.spyOn(coverArt, 'resolveAlbumArt').mockResolvedValue({
+                status: 'in_flight',
+                trackKey: 'muse|absolution|hysteria',
+                variantIndex: 0
+            });
+
+            upnpClient.emitResolvedCoverArt(io, deviceInfo, serverSettings);
+            await new Promise((resolve) => setImmediate(resolve));
+
+            expect(io.emit).toHaveBeenCalledWith('cover-art-progress', expect.objectContaining({
+                status: 'in_flight',
+                trackKey: 'muse|absolution|hysteria'
+            }));
+            expect(io.emit).not.toHaveBeenCalledWith('cover-art-progress', expect.objectContaining({ status: 'idle' }));
         });
     });
 

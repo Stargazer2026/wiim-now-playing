@@ -18,7 +18,7 @@ WNP.s = {
     // Ticks to be used in the app (debug)
     aTicksUI: ["tickDevicesGetUp", "tickDevicesRefreshUp", "tickServerSettingsUp", "tickStateUp", "tickStateDown", "tickMetadataUp", "tickMetadataDown", "tickLyricsUp", "tickLyricsDown", "tickDeviceSetUp", "tickDeviceSetDown", "tickServerSettingsDown", "tickDevicesGetDown", "tickDevicesRefreshDown", "tickVolumeGetUp", "tickVolumeGetDown", "tickVolumeSetUp", "tickVolumeSetDown", "tickPresetsListUp", "tickPresetsListDown"],
     // Debug UI elements
-    aDebugUI: ["state", "metadata", "lyrics", "lyricsStatus", "lyricsProvider", "lyricsTrackKey", "lyricsCacheEnabled", "lyricsCacheStatus", "lyricsCacheSize", "lyricsCacheMax", "lyricsCachePrefetchMode", "lyricsCachePrefetchConcurrency", "lyricsPrefetch", "lyricsPrefetchStatus", "lyricsPrefetchTrackKey", "lyricsPrefetchMode", "lyricsPrefetchReason", "sPresetsList", "sServerSettings", "sManufacturer", "sModelName", "sLocation", "sTimeStampDiff", "sAlbumArtUri", "sAlbumArtUriRaw", "sAlbumArtUriStatus", "oPresetsGroup", "btnDevices", "btnGetVolume", "btnSetVolume", "mediaLoopMode", "sTransportState", "sPlayMedium", "sPlayerProgress"]
+    aDebugUI: ["state", "metadata", "lyrics", "lyricsStatus", "lyricsProvider", "lyricsTrackKey", "lyricsCacheEnabled", "lyricsCacheStatus", "lyricsCacheSize", "lyricsCacheMax", "lyricsCachePrefetchMode", "lyricsCachePrefetchConcurrency", "lyricsPrefetch", "lyricsPrefetchStatus", "lyricsPrefetchTrackKey", "lyricsPrefetchMode", "lyricsPrefetchReason", "coverArtStatus", "coverArtRequestState", "coverArtRequestDuration", "coverArtVariantIndex", "coverArtTextModel", "coverArtImageModel", "coverArtTextModelInputPrompt", "coverArtTextModelOutputText", "coverArtImageModelInputPrompt", "sPresetsList", "sServerSettings", "sManufacturer", "sModelName", "sLocation", "sTimeStampDiff", "sAlbumArtUri", "sAlbumArtUriRaw", "sAlbumArtUriStatus", "oPresetsGroup", "btnDevices", "btnGetVolume", "btnSetVolume", "mediaLoopMode", "sTransportState", "sPlayMedium", "sPlayerProgress"]
 };
 
 // Data placeholders.
@@ -28,7 +28,10 @@ WNP.d = {
     prevTransportState: null, // Previous transport state, used to detect changes in the transport state
     prevPlayMedium: null, // Previous play medium, used to detect changes in the play medium
     prevSourceIdent: null, // Previous source ident, used to detect changes in the source
-    prevTrackInfo: null // Previous track info, used to detect changes in the metadata
+    prevTrackInfo: null, // Previous track info, used to detect changes in the metadata
+    currentCoverArtTrackKey: null,
+    coverArtRequestStartedAt: null,
+    coverArtRequestState: "idle"
 };
 
 // Reference placeholders.
@@ -68,6 +71,101 @@ WNP.updateLyricsCacheSettings = function () {
         WNP.r.lyricsCachePrefetchConcurrency.innerText = (typeof cacheSettings.maxPrefetchConcurrency === "number")
             ? cacheSettings.maxPrefetchConcurrency
             : "-";
+    }
+};
+
+WNP.updateCoverArtDebug = function (payload, statusText) {
+    const aiDebug = payload && payload.aiDebug ? payload.aiDebug : null;
+    if (WNP.r.coverArtStatus) {
+        WNP.r.coverArtStatus.innerText = statusText || "ok";
+    }
+    if (WNP.r.coverArtVariantIndex) {
+        WNP.r.coverArtVariantIndex.innerText = (payload && typeof payload.variantIndex === "number") ? payload.variantIndex : "-";
+    }
+    if (WNP.r.coverArtTextModel) {
+        WNP.r.coverArtTextModel.innerText = aiDebug && aiDebug.textModel ? aiDebug.textModel : "-";
+    }
+    if (WNP.r.coverArtImageModel) {
+        WNP.r.coverArtImageModel.innerText = aiDebug && aiDebug.imageModel ? aiDebug.imageModel : "-";
+    }
+    if (WNP.r.coverArtTextModelInputPrompt) {
+        WNP.r.coverArtTextModelInputPrompt.value = aiDebug && aiDebug.textModelInputPrompt ? aiDebug.textModelInputPrompt : "";
+    }
+    if (WNP.r.coverArtTextModelOutputText) {
+        WNP.r.coverArtTextModelOutputText.value = aiDebug && aiDebug.textModelOutputText ? aiDebug.textModelOutputText : "";
+    }
+    if (WNP.r.coverArtImageModelInputPrompt) {
+        WNP.r.coverArtImageModelInputPrompt.value = aiDebug && aiDebug.imageModelInputPrompt ? aiDebug.imageModelInputPrompt : "";
+    }
+};
+
+WNP.clearCoverArtDebug = function () {
+    if (WNP.r.coverArtStatus) {
+        WNP.r.coverArtStatus.innerText = "-";
+    }
+    if (WNP.r.coverArtRequestState) {
+        WNP.r.coverArtRequestState.innerText = "idle";
+    }
+    if (WNP.r.coverArtRequestDuration) {
+        WNP.r.coverArtRequestDuration.innerText = "-";
+    }
+    if (WNP.r.coverArtVariantIndex) {
+        WNP.r.coverArtVariantIndex.innerText = "-";
+    }
+    if (WNP.r.coverArtTextModel) {
+        WNP.r.coverArtTextModel.innerText = "-";
+    }
+    if (WNP.r.coverArtImageModel) {
+        WNP.r.coverArtImageModel.innerText = "-";
+    }
+    if (WNP.r.coverArtTextModelInputPrompt) {
+        WNP.r.coverArtTextModelInputPrompt.value = "";
+    }
+    if (WNP.r.coverArtTextModelOutputText) {
+        WNP.r.coverArtTextModelOutputText.value = "";
+    }
+    if (WNP.r.coverArtImageModelInputPrompt) {
+        WNP.r.coverArtImageModelInputPrompt.value = "";
+    }
+    WNP.d.coverArtRequestState = "idle";
+};
+
+WNP.normalizeCoverTrackKey = function (trackKey) {
+    if (typeof trackKey !== "string") {
+        return "";
+    }
+    return trackKey.split("|").map((part) => part.trim()).join("|").toLowerCase();
+};
+
+WNP.updateCoverArtProgress = function (msg) {
+    if (!msg) {
+        return;
+    }
+    if (msg.trackKey) {
+        WNP.d.currentCoverArtTrackKey = WNP.normalizeCoverTrackKey(msg.trackKey);
+    }
+    WNP.d.coverArtRequestState = msg.status || "idle";
+    if (WNP.r.coverArtRequestState) {
+        WNP.r.coverArtRequestState.innerText = WNP.d.coverArtRequestState;
+    }
+    if (WNP.r.coverArtStatus) {
+        var statusSuffix = msg.forceRefresh ? " (manual refresh)" : "";
+        WNP.r.coverArtStatus.innerText = `${WNP.d.coverArtRequestState}${statusSuffix}`;
+    }
+    if (typeof msg.startedAt === "number") {
+        WNP.d.coverArtRequestStartedAt = msg.startedAt;
+    }
+    if (WNP.r.coverArtRequestDuration) {
+        if (typeof msg.durationMs === "number") {
+            WNP.r.coverArtRequestDuration.innerText = `${msg.durationMs} ms`;
+        } else if (WNP.d.coverArtRequestState === "in_flight" && typeof WNP.d.coverArtRequestStartedAt === "number") {
+            WNP.r.coverArtRequestDuration.innerText = `${Date.now() - WNP.d.coverArtRequestStartedAt} ms (running)`;
+        } else {
+            WNP.r.coverArtRequestDuration.innerText = "-";
+        }
+    }
+    if (typeof msg.variantIndex === "number" && WNP.r.coverArtVariantIndex) {
+        WNP.r.coverArtVariantIndex.innerText = msg.variantIndex;
     }
 };
 
@@ -115,6 +213,12 @@ WNP.Init = function () {
     var rndAlbumInterval = setInterval(function () {
         WNP.s.rndAlbumArtUri = WNP.rndAlbumArt("fake-album-");
     }, 3 * 60 * 1000);
+
+    setInterval(() => {
+        if (WNP.d.coverArtRequestState === "in_flight" && typeof WNP.d.coverArtRequestStartedAt === "number" && WNP.r.coverArtRequestDuration) {
+            WNP.r.coverArtRequestDuration.innerText = `${Date.now() - WNP.d.coverArtRequestStartedAt} ms (running)`;
+        }
+    }, 250);
 
 };
 
@@ -464,6 +568,16 @@ WNP.setSocketDefinitions = function () {
             trackChanged = true;
             WNP.d.prevTrackInfo = currentTrackInfo; // Remember the last track info
             console.log("WNP", "Track changed:", currentTrackInfo);
+            var trackArtist = WNP.r.mediaArtist.innerText || "";
+            var trackAlbum = WNP.r.mediaAlbum.innerText || "";
+            var trackTitle = WNP.r.mediaTitle.innerText || "";
+            var nextCoverTrackKey = WNP.normalizeCoverTrackKey(`${trackArtist}|${trackAlbum}|${trackTitle}`);
+            var keepInFlight = WNP.d.coverArtRequestState === "in_flight" && WNP.d.currentCoverArtTrackKey === nextCoverTrackKey;
+            WNP.d.currentCoverArtTrackKey = nextCoverTrackKey;
+            if (!keepInFlight) {
+                WNP.d.coverArtRequestStartedAt = null;
+                WNP.clearCoverArtDebug();
+            }
         }
         if (trackChanged && currentAlbumArt != albumArtUri) {
             WNP.r.sAlbumArtUriRaw.innerText = albumArtUriRaw;
@@ -541,6 +655,30 @@ WNP.setSocketDefinitions = function () {
         if (WNP.r.lyricsPrefetchReason) {
             WNP.r.lyricsPrefetchReason.innerText = (msg && msg.reason) ? msg.reason : "-";
         }
+    });
+
+    socket.on("cover-art-resolved", function (msg) {
+        console.log("IO: cover-art-resolved", msg);
+        if (msg && msg.trackKey && WNP.d.currentCoverArtTrackKey && WNP.normalizeCoverTrackKey(msg.trackKey) !== WNP.d.currentCoverArtTrackKey) {
+            return;
+        }
+        WNP.updateCoverArtDebug(msg, "resolved");
+    });
+
+    socket.on("cover-art-error", function (msg) {
+        console.log("IO: cover-art-error", msg);
+        if (msg && msg.trackKey && WNP.d.currentCoverArtTrackKey && WNP.normalizeCoverTrackKey(msg.trackKey) !== WNP.d.currentCoverArtTrackKey) {
+            return;
+        }
+        WNP.updateCoverArtDebug(msg, (msg && msg.errorCode) ? msg.errorCode : "error");
+    });
+
+    socket.on("cover-art-progress", function (msg) {
+        console.log("IO: cover-art-progress", msg);
+        if (msg && msg.trackKey && WNP.d.currentCoverArtTrackKey && WNP.normalizeCoverTrackKey(msg.trackKey) !== WNP.d.currentCoverArtTrackKey) {
+            return;
+        }
+        WNP.updateCoverArtProgress(msg);
     });
 
     // On device set

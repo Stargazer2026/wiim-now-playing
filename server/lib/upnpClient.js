@@ -43,6 +43,95 @@ const getLyricsPayloadForCoverArt = (deviceInfo, metadata) => {
     return deviceInfo.lyrics;
 };
 
+const emitResolvedCoverArt = (io, deviceInfo, serverSettings, options = {}) => {
+    if (!serverSettings.features.coverArt.enabled || !deviceInfo.metadata) {
+        return;
+    }
+    const shouldResolve = !hasUsableDeviceAlbumArt(deviceInfo.metadata) || serverSettings.features.coverArt.preferGenerated || options.forceRefresh;
+    if (!shouldResolve) {
+        log("Skip cover-art fallback resolve: device albumArtURI is present");
+        return;
+    }
+    const trackKey = coverArt.getTrackKey(deviceInfo.metadata);
+    const startedAt = Date.now();
+    io.emit("cover-art-progress", {
+        status: "in_flight",
+        trackKey,
+        variantIndex: typeof options.variantIndex === "number" ? options.variantIndex : 0,
+        startedAt,
+        forceRefresh: Boolean(options.forceRefresh)
+    });
+
+    coverArt.resolveAlbumArt(deviceInfo.metadata, serverSettings, getLyricsPayloadForCoverArt(deviceInfo, deviceInfo.metadata), options).then((resolved) => {
+        if (!resolved || !deviceInfo.metadata) {
+            io.emit("cover-art-progress", {
+                status: "idle",
+                trackKey,
+                endedAt: Date.now(),
+                durationMs: Date.now() - startedAt,
+                reason: "empty-result"
+            });
+            return;
+        }
+        if (resolved.status === "in_flight") {
+            io.emit("cover-art-progress", {
+                status: "in_flight",
+                trackKey,
+                startedAt,
+                variantIndex: typeof resolved.variantIndex === "number" ? resolved.variantIndex : (typeof options.variantIndex === "number" ? options.variantIndex : 0),
+                forceRefresh: Boolean(options.forceRefresh)
+            });
+            return;
+        }
+        const currentKey = coverArt.getTrackKey(deviceInfo.metadata);
+        if (!currentKey || currentKey !== resolved.trackKey) {
+            io.emit("cover-art-progress", {
+                status: "idle",
+                trackKey,
+                endedAt: Date.now(),
+                durationMs: Date.now() - startedAt,
+                reason: "stale-track"
+            });
+            return;
+        }
+        if (resolved.errorCode) {
+            io.emit("cover-art-progress", {
+                status: "error",
+                trackKey,
+                endedAt: Date.now(),
+                durationMs: Date.now() - startedAt,
+                errorCode: resolved.errorCode
+            });
+            io.emit("cover-art-error", {
+                errorCode: resolved.errorCode,
+                trackKey: resolved.trackKey,
+                provider: resolved.provider || "openai"
+            });
+            return;
+        }
+        io.emit("cover-art-progress", {
+            status: "resolved",
+            trackKey,
+            endedAt: Date.now(),
+            durationMs: Date.now() - startedAt,
+            variantIndex: resolved.variantIndex
+        });
+        io.emit("cover-art-resolved", resolved);
+    }).catch((error) => {
+        log("Cover art resolve error", error);
+        io.emit("cover-art-progress", {
+            status: "error",
+            trackKey,
+            endedAt: Date.now(),
+            durationMs: Date.now() - startedAt,
+            errorCode: "openai_request_error"
+        });
+        io.emit("cover-art-error", {
+            errorCode: "openai_request_error"
+        });
+    });
+};
+
 const prefetchNextTracks = (result, serverSettings) => {
     if (!result || !result.NextTrackMetaData) {
         return;
@@ -258,21 +347,7 @@ const updateDeviceMetadata = (io, deviceInfo, serverSettings) => {
                                             metadataTimeStamp: lib.getTimeStamp()
                                         };;
                                         io.emit("metadata", deviceInfo.metadata);
-                                        if (serverSettings.features.coverArt.enabled && (!hasUsableDeviceAlbumArt(deviceInfo.metadata) || serverSettings.features.coverArt.preferGenerated)) {
-                                            coverArt.resolveAlbumArt(deviceInfo.metadata, serverSettings, getLyricsPayloadForCoverArt(deviceInfo, deviceInfo.metadata)).then((resolved) => {
-                                                if (!resolved || !deviceInfo.metadata) {
-                                                    return;
-                                                }
-                                                const currentKey = coverArt.getTrackKey(deviceInfo.metadata);
-                                                if (currentKey && currentKey === resolved.trackKey) {
-                                                    io.emit("cover-art-resolved", resolved);
-                                                }
-                                            }).catch((error) => {
-                                                log("Cover art resolve error", error);
-                                            });
-                                        } else if (serverSettings.features.coverArt.enabled) {
-                                            log("Skip cover-art fallback resolve: device albumArtURI is present");
-                                        }
+                                        emitResolvedCoverArt(io, deviceInfo, serverSettings);
                                         lyrics.getLyricsForMetadata(io, deviceInfo, serverSettings).catch((error) => {
                                             log("Lyrics update error", error);
                                         });
@@ -366,21 +441,7 @@ const updateDeviceMetadata = (io, deviceInfo, serverSettings) => {
                                             metadataTimeStamp: lib.getTimeStamp()
                                         };
                                         io.emit("metadata", deviceInfo.metadata);
-                                        if (serverSettings.features.coverArt.enabled && (!hasUsableDeviceAlbumArt(deviceInfo.metadata) || serverSettings.features.coverArt.preferGenerated)) {
-                                            coverArt.resolveAlbumArt(deviceInfo.metadata, serverSettings, getLyricsPayloadForCoverArt(deviceInfo, deviceInfo.metadata)).then((resolved) => {
-                                                if (!resolved || !deviceInfo.metadata) {
-                                                    return;
-                                                }
-                                                const currentKey = coverArt.getTrackKey(deviceInfo.metadata);
-                                                if (currentKey && currentKey === resolved.trackKey) {
-                                                    io.emit("cover-art-resolved", resolved);
-                                                }
-                                            }).catch((error) => {
-                                                log("Cover art resolve error", error);
-                                            });
-                                        } else if (serverSettings.features.coverArt.enabled) {
-                                            log("Skip cover-art fallback resolve: device albumArtURI is present");
-                                        }
+                                        emitResolvedCoverArt(io, deviceInfo, serverSettings);
                                         lyrics.getLyricsForMetadata(io, deviceInfo, serverSettings).catch((error) => {
                                             log("Lyrics update error", error);
                                         });
@@ -613,6 +674,7 @@ module.exports = {
     stopPolling,
     updateDeviceState,
     updateDeviceMetadata,
+    emitResolvedCoverArt,
     callDeviceAction,
     getDeviceDescription,
     getServiceDescription

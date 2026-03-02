@@ -41,6 +41,7 @@
                         <span id="mediaSourceCompact" class="media-compact-source media-compact-badge badge badge-outlined">{SOURCE}</span>
                         <span id="mediaQualityCompact" class="media-compact-badge badge badge-outlined">{QUALITY}</span>
                     </div>
+                    <div id="coverArtNotice" class="cover-art-notice text-warning d-none" role="status" aria-live="polite"></div>
                 </div>
                 <div class="mb-2"><span id="mediaAlbum">{ALBUM TITLE}</span></div>
                 <div class="mb-2"><span id="mediaSubTitle" class="text-secondary">{SUBTITLE}</span></div>
@@ -128,6 +129,9 @@
                             <a id="wnpTVMode" type="button" class="btn btn-outline-light" href="/tv">
                                 <i class="bi bi-tv"></i>
                             </a>
+                            <button id="btnCoverArtRefresh" type="button" class="btn btn-outline-light" title="Cover-Art neu generieren">
+                                <i class="bi bi-arrow-clockwise"></i>
+                            </button>
                             <div class="d-flex align-items-center px-2 border border-light rounded">
                                 <div class="form-check form-switch m-0">
                                     <input class="form-check-input" type="checkbox" id="chkWledQuickToggle" title="Toggle WLED integration">
@@ -210,9 +214,13 @@
                                         <select class="form-select" id="selCoverArtProvider">
                                             <option value="caa">Cover Art Archive (MusicBrainz)</option>
                                             <option value="itunes">iTunes / Apple Music Search API</option>
-                                            <option value="ai">AI generated image (Pollinations, legacy/experimental)</option>
                                             <option value="openai">AI generated image (OpenAI API key required)</option>
                                         </select>
+                                    </div>
+                                    <div class="mt-2">
+                                        <label class="form-label" for="coverArtOpenAiTokenBudget">OpenAI token budget (remaining)</label>
+                                        <input class="form-control" type="number" id="coverArtOpenAiTokenBudget" step="1" min="0" max="100000000">
+                                        <div class="form-text">This value is decremented by used tokens. Generation stops at 0 until you increase it again.</div>
                                     </div>
                                     <div class="mt-2">
                                         <label class="form-label" for="coverArtMemoryPoolMB">Memory pool size (MB)</label>
@@ -224,8 +232,7 @@
                                     <div class="form-text mt-2">
                                         By enabling external providers, you confirm you are responsible for complying with their terms and licenses
                                         (<a href="https://coverartarchive.org/" target="_blank" rel="noopener noreferrer">Cover Art Archive</a>,
-                                        <a href="https://platform.openai.com/docs/guides/image-generation" target="_blank" rel="noopener noreferrer">OpenAI Images API</a>,
-                                        <a href="https://pollinations.ai/" target="_blank" rel="noopener noreferrer">Pollinations (legacy/experimental)</a>).
+                                        <a href="https://platform.openai.com/docs/guides/image-generation" target="_blank" rel="noopener noreferrer">OpenAI Images API</a>).
                                     </div>
                                     <div class="alert alert-warning mt-2 mb-0" role="alert">
                                         OpenAI image generation requires active API billing. If billing hard/soft limits are reached,
