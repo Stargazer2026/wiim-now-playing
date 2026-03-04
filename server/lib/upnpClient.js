@@ -179,7 +179,18 @@ const updateDeviceState = (io, deviceInfo, serverSettings) => {
                             stateTimeStamp: lib.getTimeStamp(),
                         };
                         io.emit("state", deviceInfo.state);
-                        kiosk.handleTransportState(result.CurrentTransportState, previousState, serverSettings);
+                        kiosk.handleTransportState(result.CurrentTransportState, previousState, serverSettings, {
+                            wnpState: result.CurrentTransportState,
+                            relTime: (deviceInfo.metadata && deviceInfo.metadata.RelTime) ? deviceInfo.metadata.RelTime : null,
+                            trackSource: (deviceInfo.metadata && deviceInfo.metadata.TrackSource) ? deviceInfo.metadata.TrackSource : null,
+                            track: (deviceInfo.metadata && deviceInfo.metadata.trackMetaData)
+                                ? {
+                                    title: deviceInfo.metadata.trackMetaData["dc:title"] || null,
+                                    artist: deviceInfo.metadata.trackMetaData["upnp:artist"] || null,
+                                    album: deviceInfo.metadata.trackMetaData["upnp:album"] || null
+                                }
+                                : null
+                        });
                         if (result.CurrentTransportState === "TRANSITIONING" && previousState !== "TRANSITIONING") {
                             module.exports.updateDeviceMetadata(io, deviceInfo, serverSettings);
                         }
