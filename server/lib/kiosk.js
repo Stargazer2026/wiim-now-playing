@@ -44,13 +44,7 @@ const buildUrl = (serverSettings, command) => {
 };
 
 const getDesiredDisplayState = (transportState) => {
-    if (transportState === "PLAYING") {
-        return true;
-    }
-    if (transportState === "PAUSED_PLAYBACK" || transportState === "STOPPED") {
-        return false;
-    }
-    return null;
+    return transportState === "PLAYING";
 };
 
 const setDisplayState = (isOn, reason, diagnostics) => {
@@ -263,15 +257,6 @@ const probeDisplayState = (serverSettings, context = {}) => {
             displayState.isOn = actualDisplayOn;
         }
 
-        if (displayState.desiredIsOn === null) {
-            displayLog("probeDisplayState() skipped reconcile", {
-                ...diagnostics,
-                actualDisplayOn,
-                skipReason: "desired display state unknown"
-            });
-            return;
-        }
-
         if (actualDisplayOn === null) {
             displayLog("probeDisplayState() skipped reconcile", {
                 ...diagnostics,
@@ -350,7 +335,7 @@ const handleTransportState = (currentState, previousState, serverSettings, conte
     displayState.lastTransportState = currentState;
     displayLog("handleTransportState() poll", diagnostics);
 
-    if (desiredDisplayState !== null && displayState.isOn !== null && displayState.isOn !== desiredDisplayState) {
+    if (displayState.isOn !== null && displayState.isOn !== desiredDisplayState) {
         displayLog("handleTransportState() mismatch detected", {
             ...diagnostics,
             reason: "display state differs from WiiM transport state"

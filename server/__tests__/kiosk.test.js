@@ -75,6 +75,17 @@ describe('kiosk display reconciliation', () => {
         expect(http.get.mock.calls.some((call) => call[0].includes('cmd=screenOff'))).toBe(true);
     });
 
+    it('treats NO_MEDIA_PRESENT as desired display off and reconciles immediately', () => {
+        const settings = createSettings();
+
+        kiosk.handleTransportState('PLAYING', 'STOPPED', settings, {});
+        expect(http.get.mock.calls.some((call) => call[0].includes('cmd=screenOn'))).toBe(true);
+
+        kiosk.handleTransportState('NO_MEDIA_PRESENT', 'NO_MEDIA_PRESENT', settings, {});
+
+        expect(http.get.mock.calls.some((call) => call[0].includes('cmd=screenOff'))).toBe(true);
+    });
+
     it('probes actual display state every 60s and reconciles to desired state', async () => {
         const settings = createSettings();
 
