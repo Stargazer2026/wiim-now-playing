@@ -10,13 +10,19 @@ const http = require("http");
 const log = require("debug")("lib:kiosk");
 const displayLog = require("debug")("lib:kiosk:display");
 
+const DISPLAY_PROBE_INTERVAL_MS = 60 * 1000;
+
 let screenOffTimer = null;
+let displayProbeTimer = null;
 let displayState = {
     isOn: null,
+    desiredIsOn: null,
     lastReason: "init",
     lastTransportState: null,
     lastCommand: null,
-    lastCommandAt: null
+    lastCommandAt: null,
+    lastProbeAt: null,
+    lastProbeResult: null
 };
 
 const getKioskConfig = (serverSettings) => {
@@ -113,6 +119,17 @@ const clearScreenOffTimer = (reason, diagnostics) => {
     }
 };
 
+const clearDisplayProbeTimer = (reason, diagnostics) => {
+    if (displayProbeTimer) {
+        clearInterval(displayProbeTimer);
+        displayProbeTimer = null;
+        displayLog("clearDisplayProbeTimer()", {
+            reason,
+            diagnostics
+        });
+    }
+};
+
 const screenOn = (serverSettings, reason, diagnostics) => {
     clearScreenOffTimer("screenOn", diagnostics);
     callKioskCommand(serverSettings, "screenOn", reason, diagnostics);
@@ -156,12 +173,162 @@ const scheduleScreenOff = (serverSettings, reason, diagnostics, forceImmediate =
     }, delayMs);
 };
 
+const fetchDeviceInfo = (serverSettings, callback) => {
+    const url = buildUrl(serverSettings, "deviceInfo");
+    if (!url) {
+        callback(new Error("missing kiosk config"), null);
+        return;
+    }
+
+    displayLog("fetchDeviceInfo() request", {
+        source: "kiosk.fetchDeviceInfo",
+        url
+    });
+
+    let responseBody = "";
+    http.get(url, (res) => {
+        res.on("data", (chunk) => {
+            responseBody += chunk.toString();
+        });
+        res.on("end", () => {
+            let payload = null;
+            let parseError = null;
+            if (responseBody) {
+                try {
+                    payload = JSON.parse(responseBody);
+                } catch (error) {
+                    parseError = error;
+                }
+            }
+            if (parseError) {
+                callback(parseError, null);
+                return;
+            }
+            callback(null, payload);
+        });
+    }).on("error", (err) => {
+        callback(err, null);
+    });
+};
+
+const probeDisplayState = (serverSettings, context = {}) => {
+    const diagnostics = {
+        source: "kiosk.probeDisplayState",
+        desiredDisplayState: displayState.desiredIsOn,
+        lastTransportState: displayState.lastTransportState,
+        rememberedDisplayState: displayState.isOn,
+        reason: context.reason || "interval",
+        screenOffTimerActive: Boolean(screenOffTimer)
+    };
+
+    if (!hasKioskConfig(serverSettings)) {
+        displayLog("probeDisplayState() skipped", {
+            ...diagnostics,
+            skipReason: "missing kiosk config"
+        });
+        return;
+    }
+
+    fetchDeviceInfo(serverSettings, (err, payload) => {
+        displayState.lastProbeAt = Date.now();
+
+        if (err) {
+            displayState.lastProbeResult = "error";
+            displayLog("probeDisplayState() deviceInfo error", {
+                ...diagnostics,
+                error: err.message
+            });
+            return;
+        }
+
+        const actualDisplayOn = payload && typeof payload.screenOn === "boolean"
+            ? payload.screenOn
+            : null;
+
+        displayState.lastProbeResult = {
+            actualDisplayOn,
+            screenLocked: payload && typeof payload.screenLocked === "boolean" ? payload.screenLocked : null,
+            displayState: payload && Object.prototype.hasOwnProperty.call(payload, "displayState") ? payload.displayState : null,
+            isInScreensaver: payload && typeof payload.isInScreensaver === "boolean" ? payload.isInScreensaver : null,
+            timestamp: payload && payload.timestamp ? payload.timestamp : null
+        };
+
+        displayLog("probeDisplayState() sampled", {
+            ...diagnostics,
+            actualDisplayOn,
+            payloadSummary: displayState.lastProbeResult
+        });
+
+        if (typeof actualDisplayOn === "boolean") {
+            displayState.isOn = actualDisplayOn;
+        }
+
+        if (displayState.desiredIsOn === null) {
+            displayLog("probeDisplayState() skipped reconcile", {
+                ...diagnostics,
+                actualDisplayOn,
+                skipReason: "desired display state unknown"
+            });
+            return;
+        }
+
+        if (actualDisplayOn === null) {
+            displayLog("probeDisplayState() skipped reconcile", {
+                ...diagnostics,
+                skipReason: "deviceInfo missing screenOn"
+            });
+            return;
+        }
+
+        if (actualDisplayOn !== displayState.desiredIsOn) {
+            displayLog("probeDisplayState() mismatch detected", {
+                ...diagnostics,
+                actualDisplayOn,
+                desiredDisplayOn: displayState.desiredIsOn,
+                reason: "actual display differs from desired state"
+            });
+            if (displayState.desiredIsOn) {
+                screenOn(serverSettings, "probe-reconcile:desired-on", diagnostics);
+            } else {
+                scheduleScreenOff(serverSettings, "probe-reconcile:desired-off", diagnostics, true);
+            }
+            return;
+        }
+
+        displayLog("probeDisplayState() state in sync", {
+            ...diagnostics,
+            actualDisplayOn,
+            desiredDisplayOn: displayState.desiredIsOn
+        });
+    });
+};
+
+const startDisplayProbeTimer = (serverSettings) => {
+    if (!hasKioskConfig(serverSettings)) {
+        return;
+    }
+    if (displayProbeTimer) {
+        return;
+    }
+    displayLog("startDisplayProbeTimer()", {
+        source: "kiosk.startDisplayProbeTimer",
+        intervalMs: DISPLAY_PROBE_INTERVAL_MS
+    });
+    probeDisplayState(serverSettings, { reason: "startup" });
+    displayProbeTimer = setInterval(() => {
+        probeDisplayState(serverSettings, { reason: "interval" });
+    }, DISPLAY_PROBE_INTERVAL_MS);
+};
+
 const handleTransportState = (currentState, previousState, serverSettings, context = {}) => {
+    const desiredDisplayState = getDesiredDisplayState(currentState);
+    displayState.desiredIsOn = desiredDisplayState;
+
     const diagnostics = {
         source: "kiosk.handleTransportState",
         currentState,
         previousState,
-        desiredDisplayState: getDesiredDisplayState(currentState),
+        desiredDisplayState,
         displayState,
         screenOffTimerActive: Boolean(screenOffTimer),
         track: context.track || null,
@@ -178,10 +345,11 @@ const handleTransportState = (currentState, previousState, serverSettings, conte
         return;
     }
 
+    startDisplayProbeTimer(serverSettings);
+
     displayState.lastTransportState = currentState;
     displayLog("handleTransportState() poll", diagnostics);
 
-    const desiredDisplayState = getDesiredDisplayState(currentState);
     if (desiredDisplayState !== null && displayState.isOn !== null && displayState.isOn !== desiredDisplayState) {
         displayLog("handleTransportState() mismatch detected", {
             ...diagnostics,
@@ -213,15 +381,22 @@ const handleTransportState = (currentState, previousState, serverSettings, conte
 const applySettings = (serverSettings) => {
     if (!hasKioskConfig(serverSettings)) {
         clearScreenOffTimer("applySettings:no-kiosk-config", { source: "kiosk.applySettings" });
+        clearDisplayProbeTimer("applySettings:no-kiosk-config", { source: "kiosk.applySettings" });
         displayState = {
             isOn: null,
+            desiredIsOn: null,
             lastReason: "applySettings:no-kiosk-config",
             lastTransportState: null,
             lastCommand: null,
-            lastCommandAt: null
+            lastCommandAt: null,
+            lastProbeAt: null,
+            lastProbeResult: null
         };
         displayLog("applySettings() reset display state", displayState);
+        return;
     }
+
+    startDisplayProbeTimer(serverSettings);
 };
 
 module.exports = {
