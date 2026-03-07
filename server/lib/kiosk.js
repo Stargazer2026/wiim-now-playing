@@ -124,6 +124,8 @@ const clearDisplayProbeTimer = (reason, diagnostics) => {
     }
 };
 
+const isScreenOffPending = () => Boolean(screenOffTimer);
+
 const screenOn = (serverSettings, reason, diagnostics) => {
     clearScreenOffTimer("screenOn", diagnostics);
     callKioskCommand(serverSettings, "screenOn", reason, diagnostics);
@@ -275,7 +277,16 @@ const probeDisplayState = (serverSettings, context = {}) => {
             if (displayState.desiredIsOn) {
                 screenOn(serverSettings, "probe-reconcile:desired-on", diagnostics);
             } else {
-                scheduleScreenOff(serverSettings, "probe-reconcile:desired-off", diagnostics, true);
+                if (isScreenOffPending()) {
+                    displayLog("probeDisplayState() skipped reconcile", {
+                        ...diagnostics,
+                        actualDisplayOn,
+                        desiredDisplayOn: displayState.desiredIsOn,
+                        skipReason: "screen off timer already active"
+                    });
+                    return;
+                }
+                scheduleScreenOff(serverSettings, "probe-reconcile:desired-off", diagnostics);
             }
             return;
         }
@@ -343,7 +354,14 @@ const handleTransportState = (currentState, previousState, serverSettings, conte
         if (desiredDisplayState) {
             screenOn(serverSettings, "reconcile-mismatch:wiim-playing", diagnostics);
         } else {
-            scheduleScreenOff(serverSettings, "reconcile-mismatch:wiim-not-playing", diagnostics, true);
+            if (isScreenOffPending()) {
+                displayLog("handleTransportState() skipped reconcile", {
+                    ...diagnostics,
+                    reason: "screen off timer already active"
+                });
+                return;
+            }
+            scheduleScreenOff(serverSettings, "reconcile-mismatch:wiim-not-playing", diagnostics);
         }
         return;
     }
@@ -356,6 +374,19 @@ const handleTransportState = (currentState, previousState, serverSettings, conte
         }
         return;
     }
+
+    if (currentState === "TRANSITIONING") {
+        if (isScreenOffPending()) {
+            displayLog("handleTransportState() transitioning cooldown already active", {
+                ...diagnostics,
+                reason: "screen off timer already active"
+            });
+            return;
+        }
+        scheduleScreenOff(serverSettings, "transport-state:transitioning", diagnostics);
+        return;
+    }
+
     if (currentState === "PAUSED_PLAYBACK" || currentState === "STOPPED") {
         if (previousState !== currentState) {
             scheduleScreenOff(serverSettings, `transport-state:${currentState.toLowerCase()}`, diagnostics);
