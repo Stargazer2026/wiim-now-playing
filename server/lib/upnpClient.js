@@ -268,8 +268,6 @@ const updateDeviceMetadata = (io, deviceInfo, serverSettings) => {
                                             }).catch((error) => {
                                                 log("Cover art resolve error", error);
                                             });
-                                        } else if (serverSettings.features.coverArt.enabled) {
-                                            log("Skip cover-art fallback resolve: device albumArtURI is present");
                                         }
                                         lyrics.getLyricsForMetadata(io, deviceInfo, serverSettings).catch((error) => {
                                             log("Lyrics update error", error);
@@ -376,8 +374,6 @@ const updateDeviceMetadata = (io, deviceInfo, serverSettings) => {
                                             }).catch((error) => {
                                                 log("Cover art resolve error", error);
                                             });
-                                        } else if (serverSettings.features.coverArt.enabled) {
-                                            log("Skip cover-art fallback resolve: device albumArtURI is present");
                                         }
                                         lyrics.getLyricsForMetadata(io, deviceInfo, serverSettings).catch((error) => {
                                             log("Lyrics update error", error);

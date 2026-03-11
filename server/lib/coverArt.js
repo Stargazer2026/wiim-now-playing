@@ -170,11 +170,14 @@ const resolveLookupUrl = async (metadata, serverSettings) => {
         return null;
     }
 
-    const provider = serverSettings.features.coverArt.provider;
-    if (provider === "itunes") {
-        return lookupFromITunes(cleanArtist, cleanAlbum, cleanTitle);
+    const configuredProvider = String(serverSettings.features.coverArt.provider || "").toLowerCase();
+    if (configuredProvider === "caa") {
+        return lookupFromCAA(cleanArtist, cleanAlbum);
     }
-    return lookupFromCAA(cleanArtist, cleanAlbum);
+    if (configuredProvider !== "itunes") {
+        log("Unknown cover-art provider configured, falling back to iTunes", configuredProvider);
+    }
+    return lookupFromITunes(cleanArtist, cleanAlbum, cleanTitle);
 };
 
 const resolveAlbumArt = async (metadata, serverSettings) => {
@@ -182,6 +185,7 @@ const resolveAlbumArt = async (metadata, serverSettings) => {
     if (!key) {
         return null;
     }
+
     if (lookupCache.has(key)) {
         return lookupCache.get(key);
     }
