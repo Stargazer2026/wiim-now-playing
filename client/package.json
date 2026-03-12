@@ -1,6 +1,6 @@
 {
   "name": "client",
-  "version": "2.2.3",
+  "version": "2.2.4",
   "description": "This folder contains all client related code.",
   "source": "./src/index.html",
   "scripts": {
