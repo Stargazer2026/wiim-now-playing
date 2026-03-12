@@ -1,3 +1,25 @@
+## ⚠️ Fork Notice
+
+**IMPORTANT:** This repository is **not the official `wiim-now-playing` project**.  
+It is a personal fork with several substantial modifications to the original code base.
+
+Major changes in this fork include:
+
+- **Enhanced synced lyrics support** based on LRCLIB, including offset adjustments, prefetching and improved rendering.
+- **Persistent lyrics cache** to improve responsiveness and reduce repeated API lookups.  
+  The cache is periodically written to disk. This may cause additional write activity and could be undesirable on systems with limited flash storage (e.g. Raspberry Pi SD cards).
+- **Lyrics prefetching and lookup deduplication** to reduce latency when switching tracks.
+- **Additional display endpoints** for kiosk-style artistic/wall-art setups:  
+  `/wallart`, `/wallart-portrait`, and `/wallart-landscape`.
+- **Portrait-oriented compact UI layout**, optimized for wall-mounted displays.
+- **Album art improvements**, including optional online fallback sources (CAA / iTunes).
+- **Docker and build pipeline improvements**, including automated container builds and publishing.
+
+If you are looking for the official project, please refer to the upstream repository.
+
+If you choose to use this fork, please review the commit history and make a conscious decision before deploying it.
+
+
 # WiiM Now Playing
 
 Show what the WiiM device is currently playing on a touchscreen, separate screen or browser.
