@@ -288,6 +288,11 @@
             opacity: 0.65;
             line-height: 1.35;
             min-height: 1.35em;
+            transition: opacity 0.12s ease;
+        }
+
+        .lyrics-line.is-transitioning {
+            opacity: 0.25;
         }
 
         .lyrics-line:empty::before {

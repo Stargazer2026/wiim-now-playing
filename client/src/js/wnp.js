@@ -1628,9 +1628,39 @@ WNP.setLyricsLines = function (prevLine, currentLine, nextLine) {
     if (!WNP.r.lyricsPrev || !WNP.r.lyricsCurrent || !WNP.r.lyricsNext) {
         return;
     }
-    WNP.r.lyricsPrev.innerText = prevLine;
-    WNP.r.lyricsCurrent.innerText = currentLine;
-    WNP.r.lyricsNext.innerText = nextLine;
+    WNP.setLyricsLineWithTransition(WNP.r.lyricsPrev, prevLine);
+    WNP.setLyricsLineWithTransition(WNP.r.lyricsCurrent, currentLine);
+    WNP.setLyricsLineWithTransition(WNP.r.lyricsNext, nextLine);
+};
+
+/**
+ * Update a single lyrics line with a soft fade transition.
+ * @param {HTMLElement} lineEl - Lyrics line element.
+ * @param {string} text - New line text.
+ * @returns {undefined}
+ */
+WNP.setLyricsLineWithTransition = function (lineEl, text) {
+    if (!lineEl) {
+        return;
+    }
+
+    var nextText = text || "";
+    if (lineEl.innerText === nextText && !lineEl.dataset.transitioning) {
+        return;
+    }
+
+    if (lineEl._lyricsTransitionTimer) {
+        clearTimeout(lineEl._lyricsTransitionTimer);
+    }
+
+    lineEl.dataset.transitioning = "1";
+    lineEl.classList.add("is-transitioning");
+    lineEl._lyricsTransitionTimer = setTimeout(function () {
+        lineEl.innerText = nextText;
+        lineEl.classList.remove("is-transitioning");
+        lineEl.dataset.transitioning = "";
+        lineEl._lyricsTransitionTimer = null;
+    }, 70);
 };
 
 /**
