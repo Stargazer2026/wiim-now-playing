@@ -1514,15 +1514,7 @@ WNP.clearLyrics = function () {
         WNP.r.lyricsContainer.classList.remove("is-visible");
         WNP.r.lyricsContainer.classList.remove("is-pending");
     }
-    if (WNP.r.lyricsPrev) {
-        WNP.r.lyricsPrev.innerText = "";
-    }
-    if (WNP.r.lyricsCurrent) {
-        WNP.r.lyricsCurrent.innerText = "";
-    }
-    if (WNP.r.lyricsNext) {
-        WNP.r.lyricsNext.innerText = "";
-    }
+    WNP.setLyricsLines("", "", "");
     WNP.d.lyricsLines = [];
     WNP.d.lyricsIndex = null;
     WNP.d.lyricsSuppressPrevForIndex = null;

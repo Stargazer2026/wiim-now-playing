@@ -133,6 +133,19 @@
             display: block;
         }
 
+        .wnpLyrics.is-pending {
+            .lyrics-current {
+                font-weight: 400;
+                opacity: 0.65;
+                font-size: calc(1.3rem + .6vw);
+            }
+
+            .lyrics-next {
+                font-weight: 400;
+                opacity: 0.65;
+            }
+        }
+
         .lyrics-line {
             text-align: left;
             opacity: 0.65;
