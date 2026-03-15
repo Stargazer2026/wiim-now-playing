@@ -49,6 +49,17 @@
                         kbps}/</span><span id="mediaBitDepth">{yy
                         bits}/</span><span id="mediaSampleRate">{zz,z kHz}</span></div>
                 <div id="lyricsContainer" class="wnpLyrics" aria-live="polite">
+                    <div class="lyrics-controls" aria-label="Lyrics controls">
+                        <button id="btnLyricsLockTrack" class="btn btn-sm btn-outline-light" type="button" title="Lock or unlock lyrics for this song">
+                            <i class="bi bi-lock"></i>
+                        </button>
+                        <button id="btnLyricsLockAlbum" class="btn btn-sm btn-outline-light" type="button" title="Lock or unlock lyrics for this album">
+                            <i class="bi bi-collection"></i>
+                        </button>
+                        <button id="btnLyricsSwitchAlternative" class="btn btn-sm btn-outline-light" type="button" title="Load a different compatible lyrics match">
+                            <i class="bi bi-arrow-repeat"></i>
+                        </button>
+                    </div>
                     <div id="lyricsPrev" class="lyrics-line lyrics-prev"></div>
                     <div id="lyricsCurrent" class="lyrics-line lyrics-current"></div>
                     <div id="lyricsNext" class="lyrics-line lyrics-next"></div>
@@ -109,6 +120,14 @@
                             </ul>
                         </div>
                         <div id="devVolumeHolder" class="text-secondary dropup">
+                            <div id="lyricsUnlockActions" class="lyrics-unlock-actions" aria-label="Locked lyrics quick actions">
+                                <button id="btnLyricsUnlockTrackQuick" type="button" class="btn btn-outline-secondary" title="Unlock lyrics for this song">
+                                    <i class="bi bi-unlock"></i>
+                                </button>
+                                <button id="btnLyricsUnlockAlbumQuick" type="button" class="btn btn-outline-secondary" title="Unlock lyrics for this album">
+                                    <i class="bi bi-collection"></i>
+                                </button>
+                            </div>
                             <button id="btnDevPreset" type="button" class="btn btn-outline-secondary dropdown-toggle"
                                 data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-list-ul"></i></button>
                             <ul class="dropdown-menu" data-bs-theme="dark" id="oPresetList">

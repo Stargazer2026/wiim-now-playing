@@ -11,7 +11,7 @@ WNP.s = {
     locPort: (location.port && location.port != "80" && location.port != "1234") ? location.port : "80",
     rndAlbumArtUri: "./img/fake-album-1.jpg",
     // Device selection
-    aDeviceUI: ["wnpApp", "btnPrev", "btnPlay", "btnNext", "btnRefresh", "selDeviceChoices", "devName", "devNameHolder", "mediaTitle", "mediaSubTitle", "mediaArtist", "mediaAlbum", "mediaBitRate", "mediaBitDepth", "mediaSampleRate", "mediaQualityIdent", "devVol", "btnRepeat", "btnShuffle", "progressPlayed", "progressLeft", "progressPercent", "mediaSource", "albumArt", "bgAlbumArtBlur", "btnDevSelect", "oDeviceList", "btnDevPreset", "oPresetList", "btnDevVolume", "rVolume", "lyricsContainer", "lyricsPrev", "lyricsCurrent", "lyricsNext",  "mediaTitleArtist", "mediaTitleCompact", "mediaArtistCompact", "mediaAlbumQuality", "mediaAlbumCompact", "mediaQualityCompact", "mediaSourceCompact", "mediaSourceFooter"],
+    aDeviceUI: ["wnpApp", "btnPrev", "btnPlay", "btnNext", "btnRefresh", "selDeviceChoices", "devName", "devNameHolder", "mediaTitle", "mediaSubTitle", "mediaArtist", "mediaAlbum", "mediaBitRate", "mediaBitDepth", "mediaSampleRate", "mediaQualityIdent", "devVol", "btnRepeat", "btnShuffle", "progressPlayed", "progressLeft", "progressPercent", "mediaSource", "albumArt", "bgAlbumArtBlur", "btnDevSelect", "oDeviceList", "btnDevPreset", "oPresetList", "btnDevVolume", "rVolume", "lyricsContainer", "lyricsPrev", "lyricsCurrent", "lyricsNext", "btnLyricsLockTrack", "btnLyricsLockAlbum", "btnLyricsSwitchAlternative", "lyricsUnlockActions", "btnLyricsUnlockTrackQuick", "btnLyricsUnlockAlbumQuick", "mediaTitleArtist", "mediaTitleCompact", "mediaArtistCompact", "mediaAlbumQuality", "mediaAlbumCompact", "mediaQualityCompact", "mediaSourceCompact", "mediaSourceFooter"],
     // Server actions to be used in the app
     aServerUI: [
         "btnReboot",
@@ -63,7 +63,8 @@ WNP.d = {
     pendingTrackCoverUri: null,
     pendingTrackCoverSource: null,
     currentTrackCoverSource: null,
-    currentTrackFailedCoverUri: null
+    currentTrackFailedCoverUri: null,
+    lyricsControlState: null
 };
 
 // Reference placeholders.
@@ -468,6 +469,34 @@ WNP.setUIListeners = function () {
         });
     }
 
+    if (this.r.btnLyricsLockTrack) {
+        this.r.btnLyricsLockTrack.addEventListener("click", function () {
+            WNP.runLyricsControlAction("toggle-track-lock");
+        });
+    }
+    if (this.r.btnLyricsLockAlbum) {
+        this.r.btnLyricsLockAlbum.addEventListener("click", function () {
+            WNP.runLyricsControlAction("toggle-album-lock");
+        });
+    }
+    if (this.r.btnLyricsSwitchAlternative) {
+        this.r.btnLyricsSwitchAlternative.addEventListener("click", function () {
+            WNP.runLyricsControlAction("switch-alternative");
+        });
+    }
+
+    if (this.r.btnLyricsUnlockTrackQuick) {
+        this.r.btnLyricsUnlockTrackQuick.addEventListener("click", function () {
+            WNP.runLyricsControlAction("toggle-track-lock");
+        });
+    }
+
+    if (this.r.btnLyricsUnlockAlbumQuick) {
+        this.r.btnLyricsUnlockAlbumQuick.addEventListener("click", function () {
+            WNP.runLyricsControlAction("toggle-album-lock");
+        });
+    }
+
 };
 
 /**
@@ -796,6 +825,7 @@ WNP.setSocketDefinitions = function () {
     // On metadata
     socket.on("metadata", function (msg) {
         if (!msg) { return false; }
+        WNP.fetchLyricsControlState();
 
         // Source detection
         var playMedium = (msg.PlayMedium) ? msg.PlayMedium : "";
@@ -1067,6 +1097,7 @@ WNP.setSocketDefinitions = function () {
 
         WNP.d.lyrics = msg;
         WNP.d.lyricsIndex = null;
+        WNP.fetchLyricsControlState();
 
         if (msg.status !== "ok" || !msg.syncedLyrics) {
             WNP.clearLyrics();
@@ -1521,6 +1552,98 @@ WNP.clearLyrics = function () {
     WNP.d.pendingLyricsLines = [];
     WNP.d.pendingLyricsTrackKey = null;
     WNP.d.waitingForSongStart = false;
+};
+
+WNP.fetchLyricsControlState = async function () {
+    try {
+        const response = await fetch("/api/lyrics-control-state");
+        if (!response.ok) {
+            return;
+        }
+        const state = await response.json();
+        WNP.applyLyricsControlState(state);
+    } catch (err) {
+        console.log("WNP", "Lyrics control state fetch failed", err && err.message ? err.message : err);
+    }
+};
+
+WNP.applyLyricsControlState = function (state) {
+    WNP.d.lyricsControlState = state || null;
+
+    var available = Boolean(state && state.available);
+    var trackLocked = Boolean(state && state.trackLocked);
+    var albumLocked = Boolean(state && state.albumLocked);
+
+    if (WNP.r.btnLyricsLockTrack) {
+        WNP.r.btnLyricsLockTrack.disabled = !available;
+        WNP.r.btnLyricsLockTrack.classList.toggle("is-active", trackLocked);
+        WNP.r.btnLyricsLockTrack.title = trackLocked
+            ? "Unlock lyrics for this song"
+            : "Lock lyrics for this song";
+    }
+
+    if (WNP.r.btnLyricsLockAlbum) {
+        WNP.r.btnLyricsLockAlbum.disabled = !available;
+        WNP.r.btnLyricsLockAlbum.classList.toggle("is-active", albumLocked);
+        WNP.r.btnLyricsLockAlbum.title = albumLocked
+            ? "Unlock lyrics for this album"
+            : "Lock lyrics for this album";
+    }
+
+    if (WNP.r.btnLyricsSwitchAlternative) {
+        WNP.r.btnLyricsSwitchAlternative.disabled = !available || trackLocked || albumLocked;
+    }
+
+    var lockedFromLyricsState = Boolean(WNP.d.lyrics && WNP.d.lyrics.status === "locked");
+    var showQuickUnlock = trackLocked || lockedFromLyricsState;
+    if (WNP.r.lyricsUnlockActions) {
+        WNP.r.lyricsUnlockActions.classList.toggle("is-visible", showQuickUnlock);
+    }
+
+    if (WNP.r.btnLyricsUnlockTrackQuick) {
+        WNP.r.btnLyricsUnlockTrackQuick.disabled = !showQuickUnlock;
+    }
+
+    if (WNP.r.btnLyricsUnlockAlbumQuick) {
+        WNP.r.btnLyricsUnlockAlbumQuick.disabled = !(showQuickUnlock && available);
+        WNP.r.btnLyricsUnlockAlbumQuick.title = albumLocked
+            ? "Unlock lyrics for this album"
+            : "Lock lyrics for this album";
+    }
+};
+
+WNP.runLyricsControlAction = async function (action) {
+    if (!action) {
+        return;
+    }
+
+    var controls = [WNP.r.btnLyricsLockTrack, WNP.r.btnLyricsLockAlbum, WNP.r.btnLyricsSwitchAlternative, WNP.r.btnLyricsUnlockTrackQuick, WNP.r.btnLyricsUnlockAlbumQuick].filter(Boolean);
+    controls.forEach(function (btn) { btn.disabled = true; });
+
+    try {
+        const response = await fetch("/api/lyrics-control", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ action: action })
+        });
+        if (!response.ok) {
+            return;
+        }
+        const result = await response.json();
+        if (result && result.controls) {
+            WNP.applyLyricsControlState(result.controls);
+        } else {
+            WNP.fetchLyricsControlState();
+        }
+    } catch (err) {
+        console.log("WNP", "Lyrics control action failed", err && err.message ? err.message : err);
+    } finally {
+        setTimeout(function () {
+            WNP.fetchLyricsControlState();
+        }, 300);
+    }
 };
 
 /**

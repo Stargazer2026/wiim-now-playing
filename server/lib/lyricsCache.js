@@ -84,6 +84,13 @@ const ensureDb = (cachePath) => {
                 completedAt INTEGER,
                 PRIMARY KEY (artistKey, albumKey)
             );
+
+            CREATE TABLE IF NOT EXISTS lyrics_locks (
+                lockType TEXT,
+                lockKey TEXT,
+                createdAt INTEGER,
+                PRIMARY KEY (lockType, lockKey)
+            );
         `);
 
         statements = {
@@ -120,6 +127,12 @@ const ensureDb = (cachePath) => {
             count: db.prepare("SELECT COUNT(1) AS totalCount FROM lyrics_cache"),
             oldest: db.prepare("SELECT trackKey, syncedLyricsSize FROM lyrics_cache ORDER BY lastAccessedAt ASC LIMIT ?"),
             deleteByKey: db.prepare("DELETE FROM lyrics_cache WHERE trackKey = ?")
+            ,
+            deleteByAlbumName: db.prepare("DELETE FROM lyrics_cache WHERE LOWER(albumName) = LOWER(?)"),
+            hasLock: db.prepare("SELECT 1 FROM lyrics_locks WHERE lockType = ? AND lockKey = ?"),
+            insertLock: db.prepare("INSERT OR REPLACE INTO lyrics_locks (lockType, lockKey, createdAt) VALUES (?, ?, ?)"),
+            deleteLock: db.prepare("DELETE FROM lyrics_locks WHERE lockType = ? AND lockKey = ?"),
+            deleteLocksByPrefix: db.prepare("DELETE FROM lyrics_locks WHERE lockType = ? AND lockKey LIKE ?")
         };
 
         log("Cache database ready:", cachePath);
@@ -393,6 +406,69 @@ const markAlbumPrefetchComplete = (artistKey, albumKey, serverSettings) => {
     return true;
 };
 
+const deleteCachedLyricsByKey = (trackKey, serverSettings) => {
+    const cacheConfig = getCacheConfig(serverSettings);
+    if (!cacheConfig.enabled) {
+        return false;
+    }
+    if (!ensureDb(cacheConfig.path)) {
+        return false;
+    }
+    statements.deleteByKey.run(trackKey);
+    return true;
+};
+
+const deleteCachedLyricsByAlbumName = (albumName, serverSettings) => {
+    const cacheConfig = getCacheConfig(serverSettings);
+    if (!cacheConfig.enabled) {
+        return false;
+    }
+    if (!ensureDb(cacheConfig.path)) {
+        return false;
+    }
+    statements.deleteByAlbumName.run(albumName || "");
+    return true;
+};
+
+const hasLyricsLock = (lockType, lockKey, serverSettings) => {
+    const cacheConfig = getCacheConfig(serverSettings);
+    if (!cacheConfig.enabled) {
+        return false;
+    }
+    if (!ensureDb(cacheConfig.path)) {
+        return false;
+    }
+    return Boolean(statements.hasLock.get(lockType, lockKey));
+};
+
+const setLyricsLock = (lockType, lockKey, locked, serverSettings) => {
+    const cacheConfig = getCacheConfig(serverSettings);
+    if (!cacheConfig.enabled) {
+        return false;
+    }
+    if (!ensureDb(cacheConfig.path)) {
+        return false;
+    }
+    if (locked) {
+        statements.insertLock.run(lockType, lockKey, Date.now());
+    } else {
+        statements.deleteLock.run(lockType, lockKey);
+    }
+    return true;
+};
+
+const deleteLyricsLocksByPrefix = (lockType, lockKeyPrefix, serverSettings) => {
+    const cacheConfig = getCacheConfig(serverSettings);
+    if (!cacheConfig.enabled) {
+        return false;
+    }
+    if (!ensureDb(cacheConfig.path)) {
+        return false;
+    }
+    statements.deleteLocksByPrefix.run(lockType, `${lockKeyPrefix}%`);
+    return true;
+};
+
 module.exports = {
     getCacheConfig,
     getCacheStats,
@@ -404,5 +480,10 @@ module.exports = {
     startCacheMaintenance,
     stopCacheMaintenance,
     hasAlbumPrefetchComplete,
-    markAlbumPrefetchComplete
+    markAlbumPrefetchComplete,
+    deleteCachedLyricsByKey,
+    deleteCachedLyricsByAlbumName,
+    hasLyricsLock,
+    setLyricsLock,
+    deleteLyricsLocksByPrefix
 };

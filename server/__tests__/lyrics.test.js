@@ -6,6 +6,11 @@ jest.mock('../lib/lyricsCache.js', () => ({
     getCachedLyrics: jest.fn(() => ({ status: 'miss', durationMs: 0, cacheConfig: { enabled: false, maxSizeBytes: 0 } })),
     getCacheStats: jest.fn(() => ({ totalSize: 0 })),
     hasCachedLyrics: jest.fn(() => false),
+    hasLyricsLock: jest.fn(() => false),
+    setLyricsLock: jest.fn(),
+    deleteCachedLyricsByKey: jest.fn(),
+    deleteCachedLyricsByAlbumName: jest.fn(),
+    deleteLyricsLocksByPrefix: jest.fn(),
     hasAlbumPrefetchComplete: jest.fn(() => false),
     markAlbumPrefetchComplete: jest.fn(),
     storeLyrics: jest.fn(() => ({ stored: false }))
@@ -17,6 +22,7 @@ jest.mock('../lib/lyricsFailures.js', () => ({
 
 const https = require('https');
 const lyrics = require('../lib/lyrics.js');
+const lyricsCache = require('../lib/lyricsCache.js');
 const lyricsFailures = require('../lib/lyricsFailures.js');
 
 const buildDeviceInfo = (overrides = {}) => ({
@@ -269,4 +275,102 @@ describe('lyrics.js failure logging', () => {
         }));
     });
 
+});
+
+describe('lyrics control actions', () => {
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
+
+    it('toggles track lock and clears cached lyrics', async () => {
+        const io = { emit: jest.fn() };
+        const deviceInfo = buildDeviceInfo();
+        const serverSettings = buildServerSettings();
+
+        lyricsCache.hasLyricsLock.mockImplementation(() => false);
+
+        const result = await lyrics.controlLyricsForCurrentTrack('toggle-track-lock', io, deviceInfo, serverSettings);
+
+        expect(result).toMatchObject({ ok: true, trackLocked: true });
+        expect(lyricsCache.setLyricsLock).toHaveBeenCalled();
+        expect(lyricsCache.setLyricsLock).toHaveBeenCalledWith('album-track-unlock', expect.any(String), false, serverSettings);
+        expect(lyricsCache.deleteCachedLyricsByKey).toHaveBeenCalled();
+    });
+
+
+    it('supports selectively unlocking a song while album lock is active', async () => {
+        const io = { emit: jest.fn() };
+        const deviceInfo = buildDeviceInfo();
+        const serverSettings = buildServerSettings();
+
+        lyricsCache.hasLyricsLock.mockImplementation((lockType) => {
+            if (lockType === 'album') return true;
+            if (lockType === 'track') return false;
+            if (lockType === 'album-track-unlock') return false;
+            return false;
+        });
+
+        const result = await lyrics.controlLyricsForCurrentTrack('toggle-track-lock', io, deviceInfo, serverSettings);
+
+        expect(result).toMatchObject({ ok: true, albumLocked: true, albumTrackUnlocked: true, trackLocked: false });
+        expect(lyricsCache.setLyricsLock).toHaveBeenCalledWith('album-track-unlock', expect.any(String), true, serverSettings);
+        expect(lyricsCache.deleteCachedLyricsByKey).toHaveBeenCalled();
+    });
+
+    it('reports effective unlocked track state when album is locked with explicit track unlock', () => {
+        const deviceInfo = buildDeviceInfo();
+        const serverSettings = buildServerSettings();
+
+        lyricsCache.hasLyricsLock.mockImplementation((lockType) => {
+            if (lockType === 'album') return true;
+            if (lockType === 'track') return false;
+            if (lockType === 'album-track-unlock') return true;
+            return false;
+        });
+
+        const result = lyrics.getLyricsControlStateForCurrentTrack(deviceInfo, serverSettings);
+        expect(result).toMatchObject({ available: true, albumLocked: true, trackLocked: false, albumTrackUnlocked: true });
+    });
+
+
+    it('clears all per-track album unlock overrides when album lock is removed', async () => {
+        const io = { emit: jest.fn() };
+        const deviceInfo = buildDeviceInfo();
+        const serverSettings = buildServerSettings();
+
+        lyricsCache.hasLyricsLock.mockImplementation((lockType) => {
+            if (lockType === 'album') return true;
+            return false;
+        });
+
+        const result = await lyrics.controlLyricsForCurrentTrack('toggle-album-lock', io, deviceInfo, serverSettings);
+
+        expect(result).toMatchObject({ ok: true, albumLocked: false });
+        expect(lyricsCache.deleteLyricsLocksByPrefix).toHaveBeenCalledWith(
+            'album-track-unlock',
+            expect.stringMatching(/\|\|$/),
+            serverSettings
+        );
+    });
+
+    it('returns error when no alternative lyrics can be found', async () => {
+        https.get.mockImplementation((url, options, cb) => {
+            const res = new EventEmitter();
+            res.statusCode = 404;
+            process.nextTick(() => {
+                cb(res);
+                res.emit('end');
+            });
+            return {
+                on: jest.fn()
+            };
+        });
+
+        const io = { emit: jest.fn() };
+        const deviceInfo = buildDeviceInfo();
+        const serverSettings = buildServerSettings();
+
+        const result = await lyrics.controlLyricsForCurrentTrack('switch-alternative', io, deviceInfo, serverSettings);
+        expect(result).toMatchObject({ ok: false, reason: 'no-alternative-match' });
+    });
 });

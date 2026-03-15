@@ -255,6 +255,22 @@ app.get("/api/lyrics-failures", limiter, function (req, res) {
     });
 });
 
+app.get("/api/lyrics-control-state", limiter, function (req, res) {
+    const controls = lyrics.getLyricsControlStateForCurrentTrack(deviceInfo, serverSettings);
+    res.json(controls);
+});
+
+app.post("/api/lyrics-control", limiter, express.json(), async function (req, res) {
+    const action = req.body && typeof req.body.action === "string" ? req.body.action : "";
+    try {
+        const result = await lyrics.controlLyricsForCurrentTrack(action, io, deviceInfo, serverSettings);
+        const controls = lyrics.getLyricsControlStateForCurrentTrack(deviceInfo, serverSettings);
+        res.json({ ...result, controls });
+    } catch (error) {
+        res.status(500).json({ ok: false, reason: error.message || "lyrics-control-failed" });
+    }
+});
+
 // Proxy https album art requests through this app, because this could be a https request with a self signed certificate.
 // If the device does not have a valid (self-signed) certificate the browser cannot load the album art, hence we ignore the self signed certificate.
 app.get("/proxy-art", limiter, function (req, res) {

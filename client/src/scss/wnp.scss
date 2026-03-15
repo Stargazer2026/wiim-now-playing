@@ -258,12 +258,52 @@
         .wnpLyrics {
             display: none;
             margin-top: 8px;
-            padding: 8px 12px;
+            padding: 36px 12px 8px;
             border-radius: 12px;
             background: rgba(0, 0, 0, 0.35);
             backdrop-filter: blur(4px);
             min-height: 84px;
             text-align: left;
+            position: relative;
+        }
+
+        .lyrics-controls {
+            position: absolute;
+            top: 8px;
+            right: 10px;
+            display: flex;
+            gap: 6px;
+            z-index: 3;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+
+            .btn {
+                --bs-btn-padding-y: 0.15rem;
+                --bs-btn-padding-x: 0.35rem;
+                --bs-btn-font-size: 0.8rem;
+                line-height: 1;
+                border: none;
+                background: transparent;
+                transition: transform 0.2s ease, color 0.2s ease, background-color 0.2s ease;
+            }
+
+            .btn:hover,
+            .btn:focus-visible {
+                transform: translateY(-1px) scale(1.08);
+                background-color: rgba(255, 255, 255, 0.9);
+                color: #111;
+            }
+
+            .btn.is-active {
+                --bs-btn-color: #ff6b81;
+            }
+        }
+
+        .wnpLyrics:hover .lyrics-controls,
+        .wnpLyrics:focus-within .lyrics-controls {
+            opacity: 1;
+            pointer-events: auto;
         }
 
         .wnpLyrics.is-visible {
@@ -413,6 +453,33 @@
             bottom: 10px;
             text-align: right;
             font-size: calc(.875rem + .3vw);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+
+            .lyrics-unlock-actions {
+                display: none;
+                align-items: center;
+                gap: 4px;
+
+                &.is-visible {
+                    display: inline-flex;
+                }
+
+                .btn {
+                    border: none;
+                    color: #b3bdba;
+                    padding: 0.18rem 0.35rem;
+                    line-height: 1;
+                }
+
+                .btn:hover,
+                .btn:focus-visible {
+                    transform: translateY(-1px) scale(1.08);
+                    background-color: rgba(255, 255, 255, 0.9);
+                    color: #111;
+                }
+            }
 
             button {
                 border: none;
