@@ -8,6 +8,7 @@ const path = require("path");
 const zlib = require("zlib");
 const { DatabaseSync } = require("node:sqlite");
 const log = require("debug")("lib:lyrics-cache");
+const { normalizeText, normalizeAlbum } = require("./lyricsKeys.js");
 
 const DEFAULT_CACHE_PATH_DIR = process.env.WNP_LYRICS_CACHE_PATH || "/var/lib/wiim-now-playing/";
 const DEFAULT_DB_FILENAME = process.env.WNP_LYRICS_CACHE_DB || "lyrics-cache.sqlite";
@@ -106,6 +107,9 @@ const ensureDb = (cachePath) => {
                     completedAt
                 ) VALUES (?, ?, ?)
             `),
+            deleteAlbumPrefetch: db.prepare(
+                "DELETE FROM lyrics_album_prefetch WHERE artistKey = ? AND albumKey = ?"
+            ),
             insert: db.prepare(`
                 INSERT OR REPLACE INTO lyrics_cache (
                     trackKey,
@@ -129,6 +133,7 @@ const ensureDb = (cachePath) => {
             deleteByKey: db.prepare("DELETE FROM lyrics_cache WHERE trackKey = ?")
             ,
             deleteByAlbumName: db.prepare("DELETE FROM lyrics_cache WHERE LOWER(albumName) = LOWER(?)"),
+            listTrackKeysByArtistKey: db.prepare("SELECT trackKey FROM lyrics_cache WHERE trackKey LIKE ?"),
             hasLock: db.prepare("SELECT 1 FROM lyrics_locks WHERE lockType = ? AND lockKey = ?"),
             insertLock: db.prepare("INSERT OR REPLACE INTO lyrics_locks (lockType, lockKey, createdAt) VALUES (?, ?, ?)"),
             deleteLock: db.prepare("DELETE FROM lyrics_locks WHERE lockType = ? AND lockKey = ?"),
@@ -406,6 +411,18 @@ const markAlbumPrefetchComplete = (artistKey, albumKey, serverSettings) => {
     return true;
 };
 
+const clearAlbumPrefetchComplete = (artistKey, albumKey, serverSettings) => {
+    const cacheConfig = getCacheConfig(serverSettings);
+    if (!cacheConfig.enabled) {
+        return false;
+    }
+    if (!ensureDb(cacheConfig.path)) {
+        return false;
+    }
+    statements.deleteAlbumPrefetch.run(artistKey, albumKey);
+    return true;
+};
+
 const deleteCachedLyricsByKey = (trackKey, serverSettings) => {
     const cacheConfig = getCacheConfig(serverSettings);
     if (!cacheConfig.enabled) {
@@ -427,6 +444,47 @@ const deleteCachedLyricsByAlbumName = (albumName, serverSettings) => {
         return false;
     }
     statements.deleteByAlbumName.run(albumName || "");
+    return true;
+};
+
+
+const extractAlbumKeyFromTrackKey = (trackKey) => {
+    const parts = String(trackKey || "").split("|");
+    if (parts.length < 4) {
+        return "";
+    }
+    return parts[2] || "";
+};
+
+const albumKeysLikelyMatch = (left, right) => {
+    if (!left || !right) {
+        return false;
+    }
+    if (left === right) {
+        return true;
+    }
+    return left.startsWith(`${right} `) || right.startsWith(`${left} `);
+};
+
+const deleteCachedLyricsByArtistAlbumKey = (artistName, albumName, serverSettings) => {
+    const cacheConfig = getCacheConfig(serverSettings);
+    if (!cacheConfig.enabled) {
+        return false;
+    }
+    if (!ensureDb(cacheConfig.path)) {
+        return false;
+    }
+
+    const artistKey = normalizeText(artistName);
+    const albumKey = normalizeAlbum(albumName);
+    const rows = statements.listTrackKeysByArtistKey.all(`%|${artistKey}|%`);
+
+    rows.forEach((row) => {
+        const cachedAlbumKey = extractAlbumKeyFromTrackKey(row.trackKey);
+        if (albumKeysLikelyMatch(cachedAlbumKey, albumKey)) {
+            statements.deleteByKey.run(row.trackKey);
+        }
+    });
     return true;
 };
 
@@ -481,8 +539,10 @@ module.exports = {
     stopCacheMaintenance,
     hasAlbumPrefetchComplete,
     markAlbumPrefetchComplete,
+    clearAlbumPrefetchComplete,
     deleteCachedLyricsByKey,
     deleteCachedLyricsByAlbumName,
+    deleteCachedLyricsByArtistAlbumKey,
     hasLyricsLock,
     setLyricsLock,
     deleteLyricsLocksByPrefix

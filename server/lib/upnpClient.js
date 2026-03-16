@@ -22,6 +22,23 @@ const coverArt = require("./coverArt.js");
 const kiosk = require("./kiosk.js");
 const log = require("debug")("lib:upnpClient");
 
+
+const withNormalizedLyricsTrackKey = (metadata) => {
+    const track = metadata && metadata.trackMetaData ? metadata.trackMetaData : null;
+    if (!track) {
+        return metadata;
+    }
+    const trackName = track["dc:title"] || "";
+    const artistName = track["upnp:artist"] || "";
+    const albumName = track["upnp:album"] || "";
+    const duration = lyrics.parseDurationToSeconds(metadata.TrackDuration);
+    const lyricsTrackKey = lyrics.buildTrackKey(trackName, artistName, albumName, duration);
+    return {
+        ...metadata,
+        lyricsTrackKey
+    };
+};
+
 const hasUsableDeviceAlbumArt = (metadata) => {
     const track = metadata && metadata.trackMetaData ? metadata.trackMetaData : null;
     if (!track || typeof track["upnp:albumArtURI"] !== "string") {
@@ -250,11 +267,11 @@ const updateDeviceMetadata = (io, deviceInfo, serverSettings) => {
                                          * TrackSource : Prime, Qobuz, Spotify:..., newTuneIn, iHeartRadio, Deezer, UPnPServer, Tidal, vTuner
                                          */
 
-                                        deviceInfo.metadata = {
+                                        deviceInfo.metadata = withNormalizedLyricsTrackKey({
                                             trackMetaData: (metadataJson["DIDL-Lite"] && metadataJson["DIDL-Lite"]["item"]) ? metadataJson["DIDL-Lite"]["item"] : null,
                                             ...result,
                                             metadataTimeStamp: lib.getTimeStamp()
-                                        };;
+                                        });
                                         io.emit("metadata", deviceInfo.metadata);
                                         if (serverSettings.features.coverArt.enabled && !hasUsableDeviceAlbumArt(deviceInfo.metadata)) {
                                             coverArt.resolveAlbumArt(deviceInfo.metadata, serverSettings).then((resolved) => {
@@ -299,10 +316,10 @@ const updateDeviceMetadata = (io, deviceInfo, serverSettings) => {
                             );
                         }
                         else {
-                            deviceInfo.metadata = {
+                            deviceInfo.metadata = withNormalizedLyricsTrackKey({
                                 ...result,
                                 metadataTimeStamp: lib.getTimeStamp()
-                            };
+                            });
                             io.emit("metadata", deviceInfo.metadata);
                             lyrics.getLyricsForMetadata(io, deviceInfo, serverSettings).catch((error) => {
                                 log("Lyrics update error", error);
@@ -356,11 +373,11 @@ const updateDeviceMetadata = (io, deviceInfo, serverSettings) => {
                                         log("updateDeviceMetadata()", err)
                                     }
                                     else {
-                                        deviceInfo.metadata = {
+                                        deviceInfo.metadata = withNormalizedLyricsTrackKey({
                                             trackMetaData: metadataJson["DIDL-Lite"]["item"],
                                             ...result,
                                             metadataTimeStamp: lib.getTimeStamp()
-                                        };
+                                        });
                                         io.emit("metadata", deviceInfo.metadata);
                                         if (serverSettings.features.coverArt.enabled && !hasUsableDeviceAlbumArt(deviceInfo.metadata)) {
                                             coverArt.resolveAlbumArt(deviceInfo.metadata, serverSettings).then((resolved) => {
@@ -405,10 +422,10 @@ const updateDeviceMetadata = (io, deviceInfo, serverSettings) => {
                             );
                         }
                         else {
-                            deviceInfo.metadata = {
+                            deviceInfo.metadata = withNormalizedLyricsTrackKey({
                                 ...result,
                                 metadataTimeStamp: lib.getTimeStamp()
-                            };
+                            });
                             io.emit("metadata", deviceInfo.metadata);
                             lyrics.getLyricsForMetadata(io, deviceInfo, serverSettings).catch((error) => {
                                 log("Lyrics update error", error);

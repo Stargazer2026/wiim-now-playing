@@ -969,7 +969,7 @@ WNP.setSocketDefinitions = function () {
         var trackArtist = (msg.trackMetaData && msg.trackMetaData["upnp:artist"]) ? msg.trackMetaData["upnp:artist"] : "";
         var trackAlbum = (msg.trackMetaData && msg.trackMetaData["upnp:album"]) ? msg.trackMetaData["upnp:album"] : "";
         var trackTitle = (msg.trackMetaData && msg.trackMetaData["dc:title"]) ? msg.trackMetaData["dc:title"] : "";
-        WNP.d.currentLyricsTrackKey = WNP.buildLyricsTrackKey(
+        WNP.d.currentLyricsTrackKey = msg.lyricsTrackKey || WNP.buildLyricsTrackKey(
             trackTitle,
             trackArtist,
             trackAlbum,
@@ -1483,10 +1483,31 @@ WNP.normalizeLyricsText = function (value) {
 };
 
 WNP.normalizeLyricsAlbum = function (value) {
-    return WNP.normalizeLyricsText(value)
+    if (!value) {
+        return "";
+    }
+    return value
+        .toString()
+        .toLowerCase()
+        .replace(/[\[\]()]/g, " ")
+        .replace(/&/g, " and ")
+        .replace(/feat\.?/g, " ")
+        .replace(/ft\.?/g, " ")
+        .replace(/[-–—:]/g, " ")
+        .replace(/[^a-z0-9\s]/g, " ")
         .replace(/\b(deluxe|edition|remaster(ed)?|expanded|bonus|anniversary|live|acoustic|mono|stereo|version)\b/g, "")
         .replace(/\s+/g, " ")
         .trim();
+};
+
+WNP.normalizeLyricsDurationForKey = function (duration) {
+    if (duration === null || duration === undefined) {
+        return "";
+    }
+    if (typeof duration === "number" && Number.isFinite(duration)) {
+        return Math.round(duration);
+    }
+    return duration;
 };
 
 WNP.parseDurationToSeconds = function (duration) {
@@ -1514,7 +1535,7 @@ WNP.buildLyricsTrackKey = function (trackName, artistName, albumName, duration) 
         WNP.normalizeLyricsText(trackName),
         WNP.normalizeLyricsText(artistName),
         WNP.normalizeLyricsAlbum(albumName),
-        (typeof duration === "number" && Number.isFinite(duration)) ? Math.round(duration) : ""
+        WNP.normalizeLyricsDurationForKey(duration)
     ].join("|");
 };
 

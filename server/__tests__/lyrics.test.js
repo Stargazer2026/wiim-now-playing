@@ -10,9 +10,11 @@ jest.mock('../lib/lyricsCache.js', () => ({
     setLyricsLock: jest.fn(),
     deleteCachedLyricsByKey: jest.fn(),
     deleteCachedLyricsByAlbumName: jest.fn(),
+    deleteCachedLyricsByArtistAlbumKey: jest.fn(),
     deleteLyricsLocksByPrefix: jest.fn(),
     hasAlbumPrefetchComplete: jest.fn(() => false),
     markAlbumPrefetchComplete: jest.fn(),
+    clearAlbumPrefetchComplete: jest.fn(),
     storeLyrics: jest.fn(() => ({ stored: false }))
 }));
 jest.mock('../lib/lyricsFailures.js', () => ({
@@ -277,6 +279,30 @@ describe('lyrics.js failure logging', () => {
 
 });
 
+
+    it('skips prefetch when album is locked', async () => {
+        const io = { emit: jest.fn() };
+        const metadata = buildDeviceInfo().metadata;
+        const serverSettings = buildServerSettings();
+        serverSettings.features.lyrics.cache.enabled = true;
+        serverSettings.features.lyrics.cache.maxSizeMB = 10;
+        serverSettings.features.lyrics.cache.prefetch = 'album';
+
+        lyricsCache.getCacheConfig.mockReturnValue({
+            enabled: true,
+            maxSizeBytes: 10 * 1024 * 1024,
+            maxPrefetchConcurrency: 4,
+            prefetch: 'album',
+            path: '/tmp/test.sqlite'
+        });
+        lyricsCache.hasLyricsLock.mockImplementation((lockType) => lockType === 'album');
+
+        await lyrics.prefetchLyricsForMetadata(io, metadata, serverSettings);
+
+        expect(https.get).not.toHaveBeenCalled();
+        expect(lyricsCache.storeLyrics).not.toHaveBeenCalled();
+    });
+
 describe('lyrics control actions', () => {
     beforeEach(() => {
         jest.clearAllMocks();
@@ -295,6 +321,7 @@ describe('lyrics control actions', () => {
         expect(lyricsCache.setLyricsLock).toHaveBeenCalled();
         expect(lyricsCache.setLyricsLock).toHaveBeenCalledWith('album-track-unlock', expect.any(String), false, serverSettings);
         expect(lyricsCache.deleteCachedLyricsByKey).toHaveBeenCalled();
+        expect(lyricsCache.clearAlbumPrefetchComplete).not.toHaveBeenCalled();
     });
 
 
@@ -315,6 +342,11 @@ describe('lyrics control actions', () => {
         expect(result).toMatchObject({ ok: true, albumLocked: true, albumTrackUnlocked: true, trackLocked: false });
         expect(lyricsCache.setLyricsLock).toHaveBeenCalledWith('album-track-unlock', expect.any(String), true, serverSettings);
         expect(lyricsCache.deleteCachedLyricsByKey).toHaveBeenCalled();
+        expect(lyricsCache.clearAlbumPrefetchComplete).toHaveBeenCalledWith(
+            'beyond the black',
+            'break the silence',
+            serverSettings
+        );
     });
 
     it('reports effective unlocked track state when album is locked with explicit track unlock', () => {
@@ -337,18 +369,100 @@ describe('lyrics control actions', () => {
         const io = { emit: jest.fn() };
         const deviceInfo = buildDeviceInfo();
         const serverSettings = buildServerSettings();
+        serverSettings.features.lyrics.cache.enabled = true;
+        serverSettings.features.lyrics.cache.maxSizeMB = 10;
+        serverSettings.features.lyrics.cache.prefetch = 'album';
+
+        lyricsCache.getCacheConfig.mockReturnValue({
+            enabled: true,
+            maxSizeBytes: 10 * 1024 * 1024,
+            maxPrefetchConcurrency: 4,
+            prefetch: 'album',
+            path: '/tmp/test.sqlite'
+        });
+
+        let albumLocked = true;
+        lyricsCache.setLyricsLock.mockImplementation((lockType, _key, locked) => {
+            if (lockType === 'album') {
+                albumLocked = locked;
+            }
+        });
+        lyricsCache.hasLyricsLock.mockImplementation((lockType) => {
+            if (lockType === 'album') return albumLocked;
+            return false;
+        });
+        lyricsCache.hasAlbumPrefetchComplete.mockReturnValue(true);
+
+        const result = await lyrics.controlLyricsForCurrentTrack('toggle-album-lock', io, deviceInfo, serverSettings);
+        await new Promise((resolve) => setImmediate(resolve));
+
+        expect(result).toMatchObject({ ok: true, albumLocked: false, prefetchTriggered: true });
+        expect(lyricsCache.clearAlbumPrefetchComplete).not.toHaveBeenCalled();
+        expect(lyricsCache.deleteCachedLyricsByArtistAlbumKey).toHaveBeenCalledWith(
+            'Beyond The Black',
+            'Break The Silence',
+            serverSettings
+        );
+        expect(lyricsCache.deleteCachedLyricsByAlbumName).not.toHaveBeenCalled();
+        expect(lyricsCache.deleteLyricsLocksByPrefix).toHaveBeenCalledWith(
+            'album-track-unlock',
+            expect.stringMatching(/\|\|$/),
+            serverSettings
+        );
+        expect(lyricsCache.hasAlbumPrefetchComplete).toHaveBeenCalledWith(
+            'beyond the black',
+            'break the silence',
+            serverSettings
+        );
+    });
+
+    it('clears album prefetch completion when album lock is enabled', async () => {
+        const io = { emit: jest.fn() };
+        const deviceInfo = buildDeviceInfo();
+        const serverSettings = buildServerSettings();
 
         lyricsCache.hasLyricsLock.mockImplementation((lockType) => {
-            if (lockType === 'album') return true;
+            if (lockType === 'album') return false;
             return false;
         });
 
         const result = await lyrics.controlLyricsForCurrentTrack('toggle-album-lock', io, deviceInfo, serverSettings);
 
-        expect(result).toMatchObject({ ok: true, albumLocked: false });
-        expect(lyricsCache.deleteLyricsLocksByPrefix).toHaveBeenCalledWith(
-            'album-track-unlock',
-            expect.stringMatching(/\|\|$/),
+        expect(result).toMatchObject({ ok: true, albumLocked: true });
+        expect(lyricsCache.clearAlbumPrefetchComplete).toHaveBeenCalledWith(
+            'beyond the black',
+            'break the silence',
+            serverSettings
+        );
+        expect(lyricsCache.deleteCachedLyricsByArtistAlbumKey).toHaveBeenCalledWith(
+            'Beyond The Black',
+            'Break The Silence',
+            serverSettings
+        );
+        expect(lyricsCache.deleteCachedLyricsByAlbumName).not.toHaveBeenCalled();
+    });
+
+
+
+    it('normalizes album lock key so lock applies across album title variants', async () => {
+        const io = { emit: jest.fn() };
+        const deviceInfo = buildDeviceInfo({
+            albumName: 'Wildlive (Live at Olympiahalle)',
+            artistName: 'Powerwolf',
+            trackName: 'Dancing With the Dead',
+            trackDuration: '00:04:11'
+        });
+        const serverSettings = buildServerSettings();
+
+        lyricsCache.hasLyricsLock.mockImplementation(() => false);
+
+        const result = await lyrics.controlLyricsForCurrentTrack('toggle-album-lock', io, deviceInfo, serverSettings);
+
+        expect(result).toMatchObject({ ok: true, albumLocked: true });
+        expect(lyricsCache.setLyricsLock).toHaveBeenCalledWith(
+            'album',
+            'wildlive at olympiahalle',
+            true,
             serverSettings
         );
     });

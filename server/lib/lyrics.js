@@ -7,6 +7,16 @@ const https = require("https");
 const log = require("debug")("lib:lyrics");
 const lyricsCache = require("./lyricsCache.js");
 const lyricsFailures = require("./lyricsFailures.js");
+const {
+    normalizeText,
+    normalizeAlbum,
+    normalizeExactKey,
+    normalizeDurationForKey,
+    buildTrackKey,
+    buildTrackLockKey,
+    buildAlbumLockKey,
+    buildAlbumTrackUnlockKey
+} = require("./lyricsKeys.js");
 
 const LRCLIB_BASE_URL = "https://lrclib.net";
 const NEGATIVE_CACHE_TTL_MS = 10 * 60 * 1000;
@@ -74,35 +84,6 @@ const fetchJsonWithTiming = async (path, serverSettings, diagnostics, label) => 
     }
 };
 
-const normalizeText = (value) => {
-    if (!value) {
-        return "";
-    }
-    return value
-        .toLowerCase()
-        .replace(/\([^)]*\)/g, " ")
-        .replace(/\[[^\]]*\]/g, " ")
-        .replace(/&/g, " and ")
-        .replace(/feat\.?/g, " ")
-        .replace(/ft\.?/g, " ")
-        .replace(/[-–—]/g, " ")
-        .replace(/[^a-z0-9\s]/g, " ")
-        .replace(/\s+/g, " ")
-        .trim();
-};
-
-const normalizeExactKey = (value) => String(value || "")
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim();
-
-const normalizeAlbum = (value) => {
-    return normalizeText(value)
-        .replace(/\b(deluxe|edition|remaster(ed)?|expanded|bonus|anniversary|live|acoustic|mono|stereo|version)\b/g, "")
-        .replace(/\s+/g, " ")
-        .trim();
-};
-
 const parseDurationToSeconds = (duration) => {
     if (!duration) {
         return null;
@@ -121,42 +102,6 @@ const parseDurationToSeconds = (duration) => {
         return parts[0] * 60 + parts[1];
     }
     return null;
-};
-
-const normalizeDurationForKey = (duration) => {
-    if (duration === null || duration === undefined) {
-        return "";
-    }
-    if (typeof duration === "number" && Number.isFinite(duration)) {
-        return Math.round(duration);
-    }
-    return duration;
-};
-
-const buildTrackKey = (trackName, artistName, albumName, duration) => {
-    const base = [
-        normalizeText(trackName),
-        normalizeText(artistName),
-        normalizeAlbum(albumName),
-        normalizeDurationForKey(duration)
-    ].join("|");
-    return base;
-};
-
-const buildTrackLockKey = (trackName, albumName, duration) => {
-    return [
-        normalizeExactKey(trackName),
-        normalizeExactKey(albumName),
-        normalizeDurationForKey(duration)
-    ].join("|");
-};
-
-const buildAlbumLockKey = (albumName) => normalizeExactKey(albumName);
-
-const buildAlbumTrackUnlockKey = (albumName, trackName, duration) => {
-    const albumLockKey = buildAlbumLockKey(albumName);
-    const trackPart = [normalizeExactKey(trackName), normalizeDurationForKey(duration)].join("|");
-    return [albumLockKey, trackPart].join("||");
 };
 
 const getTrackLockState = (signature, serverSettings) => {
@@ -948,6 +893,14 @@ const prefetchCandidates = async (candidates, serverSettings) => {
             duration: normalizeDurationForKey(candidate.duration)
         };
         const trackKey = buildTrackKey(signature.trackName, signature.artistName, signature.albumName, signature.duration);
+        const lockState = getTrackLockState(signature, serverSettings);
+        if (lockState.effectiveLocked) {
+            return {
+                trackKey,
+                skipped: "locked",
+                lockReason: lockState.trackLocked ? "track" : (lockState.albumLocked ? "album" : null)
+            };
+        }
         if (lyricsCache.hasCachedLyrics(trackKey, serverSettings)) {
             return { trackKey, skipped: "cached" };
         }
@@ -976,6 +929,17 @@ const schedulePrefetchForSignature = (io, signature, serverSettings, options = {
         const startedAt = Date.now();
         const albumKey = normalizeAlbum(signature.albumName);
         const artistKey = normalizeText(signature.artistName);
+        const albumLockKey = buildAlbumLockKey(signature.albumName);
+        if (lyricsCache.hasLyricsLock(LYRICS_LOCK_TYPES.ALBUM, albumLockKey, serverSettings)) {
+            lyricsCache.clearAlbumPrefetchComplete(artistKey, albumKey, serverSettings);
+            setLyricsPrefetchState(io, {
+                status: "skipped",
+                reason: "album-locked",
+                mode,
+                signature
+            });
+            return;
+        }
         if (lyricsCache.hasAlbumPrefetchComplete(artistKey, albumKey, serverSettings)) {
             setLyricsPrefetchState(io, {
                 status: "skipped",
@@ -999,6 +963,7 @@ const schedulePrefetchForSignature = (io, signature, serverSettings, options = {
         let skippedInFlight = 0;
         let skippedCached = 0;
         let skippedOther = 0;
+        let skippedLocked = 0;
 
         const albumParams = new URLSearchParams({
             album_name: signature.albumName,
@@ -1021,6 +986,8 @@ const schedulePrefetchForSignature = (io, signature, serverSettings, options = {
                     skippedCached += 1;
                 } else if (result?.skipped === "in-flight") {
                     skippedInFlight += 1;
+                } else if (result?.skipped === "locked") {
+                    skippedLocked += 1;
                 } else {
                     skippedOther += 1;
                     if (result?.error) {
@@ -1030,7 +997,9 @@ const schedulePrefetchForSignature = (io, signature, serverSettings, options = {
             }
         });
 
-        const shouldMarkAlbumComplete = totalCandidates > 0
+        const eligibleCandidates = Math.max(0, totalCandidates - skippedLocked);
+        const shouldMarkAlbumComplete = eligibleCandidates > 0
+            && skippedLocked === 0
             && skippedInFlight === 0
             && skippedOther === 0;
         if (shouldMarkAlbumComplete) {
@@ -1049,7 +1018,9 @@ const schedulePrefetchForSignature = (io, signature, serverSettings, options = {
             skipped: totalSkipped,
             skippedCached,
             skippedInFlight,
-            skippedOther
+            skippedOther,
+            skippedLocked,
+            eligibleCandidates
         });
     })().catch((error) => {
         log("LRCLIB prefetch error:", error.message);
@@ -1087,6 +1058,16 @@ const prefetchLyricsForMetadata = async (io, metadata, serverSettings, options =
     }
 
     const trackKey = buildTrackKey(signature.trackName, signature.artistName, signature.albumName, signature.duration);
+    const lockState = getTrackLockState(signature, serverSettings);
+    if (lockState.effectiveLocked) {
+        setLyricsPrefetchState(io, {
+            status: "skipped",
+            trackKey,
+            signature,
+            reason: lockState.trackLocked ? "track-locked" : "album-locked"
+        });
+        return;
+    }
     const cached = lyricsCache.getCachedLyrics(trackKey, serverSettings);
     if (cached.status === "hit") {
         setLyricsPrefetchState(io, {
@@ -1150,6 +1131,11 @@ const controlLyricsForCurrentTrack = async (action, io, deviceInfo, serverSettin
                 nextAlbumTrackUnlocked,
                 serverSettings
             );
+            lyricsCache.clearAlbumPrefetchComplete(
+                normalizeText(signature.artistName),
+                normalizeAlbum(signature.albumName),
+                serverSettings
+            );
             lyricsCache.deleteCachedLyricsByKey(trackKey, serverSettings);
             negativeCache.delete(trackKey);
             await getLyricsForMetadata(io, deviceInfo, serverSettings);
@@ -1180,15 +1166,35 @@ const controlLyricsForCurrentTrack = async (action, io, deviceInfo, serverSettin
     if (action === "toggle-album-lock") {
         const nextLocked = !lockState.albumLocked;
         lyricsCache.setLyricsLock(LYRICS_LOCK_TYPES.ALBUM, lockState.albumLockKey, nextLocked, serverSettings);
-        if (!nextLocked) {
+        if (nextLocked) {
+            lyricsCache.clearAlbumPrefetchComplete(
+                normalizeText(signature.artistName),
+                normalizeAlbum(signature.albumName),
+                serverSettings
+            );
+        } else {
             lyricsCache.deleteLyricsLocksByPrefix(
                 LYRICS_LOCK_TYPES.ALBUM_TRACK_UNLOCK,
                 `${lockState.albumLockKey}||`,
                 serverSettings
             );
         }
-        lyricsCache.deleteCachedLyricsByAlbumName(signature.albumName, serverSettings);
+        lyricsCache.deleteCachedLyricsByArtistAlbumKey(
+            signature.artistName,
+            signature.albumName,
+            serverSettings
+        );
         negativeCache.delete(trackKey);
+
+        if (!nextLocked) {
+            deviceInfo.lyrics = null;
+            await getLyricsForMetadata(io, deviceInfo, serverSettings);
+            schedulePrefetchForSignature(io, signature, serverSettings, {
+                reason: "album-unlocked"
+            });
+            return { ok: true, action, albumLocked: nextLocked, prefetchTriggered: true };
+        }
+
         await getLyricsForMetadata(io, deviceInfo, serverSettings);
         return { ok: true, action, albumLocked: nextLocked };
     }

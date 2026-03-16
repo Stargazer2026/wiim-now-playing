@@ -37,6 +37,23 @@ const coverArt = require("./lib/coverArt.js");
 const kiosk = require("./lib/kiosk.js");
 const log = require("debug")("index"); // See README.md on debugging
 
+
+const withNormalizedLyricsTrackKey = (metadata) => {
+    const track = metadata && metadata.trackMetaData ? metadata.trackMetaData : null;
+    if (!track) {
+        return metadata;
+    }
+    const trackName = track["dc:title"] || "";
+    const artistName = track["upnp:artist"] || "";
+    const albumName = track["upnp:album"] || "";
+    const duration = lyrics.parseDurationToSeconds(metadata.TrackDuration);
+    const lyricsTrackKey = lyrics.buildTrackKey(trackName, artistName, albumName, duration);
+    return {
+        ...metadata,
+        lyricsTrackKey
+    };
+};
+
 // For versionioning purposes
 // Load the package.json files to get the version numbers
 const packageJsonServer = require('../package.json'); // Server package.json
@@ -366,7 +383,7 @@ io.on("connection", (socket) => {
     // This includes the very first connected client, which otherwise
     // would wait for the next polling cycle before seeing metadata/lyrics.
     socket.emit("state", deviceInfo.state);
-    socket.emit("metadata", deviceInfo.metadata);
+    socket.emit("metadata", withNormalizedLyricsTrackKey(deviceInfo.metadata));
     if (deviceInfo.lyrics) {
         socket.emit("lyrics", deviceInfo.lyrics);
     }
