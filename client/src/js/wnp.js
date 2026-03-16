@@ -1843,9 +1843,11 @@ WNP.updateLyricsProgress = function (relTime, timeStampDiff) {
         return;
     }
 
+    var nextPlusOneLine = WNP.d.lyricsLines[activeIndex + 2] ? WNP.d.lyricsLines[activeIndex + 2].text : "";
+
     WNP.d.lyricsIndex = activeIndex;
     WNP.d.lyricsLongGapContextIndex = currentIndex;
-    WNP.setLyricsLines(state.prevLine, state.currentLine, state.nextLine);
+    WNP.setLyricsLines(state.prevLine, state.currentLine, state.nextLine, nextPlusOneLine);
 };
 
 /**
@@ -1853,20 +1855,24 @@ WNP.updateLyricsProgress = function (relTime, timeStampDiff) {
  * @param {string} prevLine - Previous line.
  * @param {string} currentLine - Current line.
  * @param {string} nextLine - Next line.
+ * @param {string} nextPlusOneLine - Next+1 line (lookahead for repeated passages).
  * @returns {undefined}
  */
-WNP.setLyricsLines = function (prevLine, currentLine, nextLine) {
+WNP.setLyricsLines = function (prevLine, currentLine, nextLine, nextPlusOneLine) {
     if (!WNP.r.lyricsPrev || !WNP.r.lyricsCurrent || !WNP.r.lyricsNext) {
         return;
     }
     var nextPrev = prevLine || "";
     var nextCurrent = currentLine || "";
     var nextNext = nextLine || "";
+    var nextAfterNext = nextPlusOneLine || "";
 
     var sameContent = WNP.r.lyricsPrev.innerText === nextPrev
         && WNP.r.lyricsCurrent.innerText === nextCurrent
         && WNP.r.lyricsNext.innerText === nextNext;
-    var isRepeatPassage = (nextNext !== "" && nextNext === nextCurrent) || (nextCurrent !== "" && nextCurrent === nextPrev);
+    var isRepeatPassage = (nextNext !== "" && nextNext === nextCurrent)
+        || (nextCurrent !== "" && nextCurrent === nextPrev)
+        || (nextNext !== "" && nextNext === nextAfterNext);
     var shouldAnimate = !sameContent || isRepeatPassage;
 
     if (!shouldAnimate) {
