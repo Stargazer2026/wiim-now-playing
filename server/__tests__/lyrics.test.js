@@ -488,3 +488,116 @@ describe('lyrics control actions', () => {
         expect(result).toMatchObject({ ok: false, reason: 'no-alternative-match' });
     });
 });
+
+
+describe('lyrics.js synced lyrics preprocessing', () => {
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
+
+    it('merges closely timed synced lyric lines for display', async () => {
+        https.get.mockImplementation((url, options, cb) => {
+            const res = new EventEmitter();
+            const requestUrl = typeof url === 'string' ? url : '';
+            let payload = '';
+
+            if (requestUrl.includes('/api/search?')) {
+                res.statusCode = 200;
+                payload = JSON.stringify([
+                    {
+                        id: 200,
+                        trackName: 'Motorbreath',
+                        artistName: 'Metallica',
+                        albumName: "Kill 'Em All",
+                        duration: 188,
+                        instrumental: false,
+                        syncedLyrics: '[01:23.63]It is\n[01:24.37]Going to\n[01:25.17]Take your breath away\n'
+                    }
+                ]);
+            } else {
+                res.statusCode = 404;
+            }
+
+            process.nextTick(() => {
+                cb(res);
+                if (payload) {
+                    res.emit('data', payload);
+                }
+                res.emit('end');
+            });
+
+            return {
+                on: jest.fn()
+            };
+        });
+
+        const io = { emit: jest.fn() };
+        const deviceInfo = buildDeviceInfo({
+            trackName: 'Motorbreath',
+            artistName: 'Metallica',
+            albumName: "Kill 'Em All",
+            trackDuration: '00:03:08'
+        });
+        const serverSettings = buildServerSettings();
+
+        await lyrics.getLyricsForMetadata(io, deviceInfo, serverSettings);
+
+        expect(io.emit).toHaveBeenCalledWith('lyrics', expect.objectContaining({
+            status: 'ok',
+            syncedLyrics: '[01:23.63]It is. Going to\n[01:25.17]Take your breath away\n'
+        }));
+    });
+
+    it('does not append a second dot when first lyric line already ends with dot', async () => {
+        https.get.mockImplementation((url, options, cb) => {
+            const res = new EventEmitter();
+            const requestUrl = typeof url === 'string' ? url : '';
+            let payload = '';
+
+            if (requestUrl.includes('/api/search?')) {
+                res.statusCode = 200;
+                payload = JSON.stringify([
+                    {
+                        id: 201,
+                        trackName: 'Motorbreath',
+                        artistName: 'Metallica',
+                        albumName: "Kill 'Em All",
+                        duration: 188,
+                        instrumental: false,
+                        syncedLyrics: '[01:23.63]It is.\n[01:24.37]Going to\n[01:26.17]Take your breath away\n'
+                    }
+                ]);
+            } else {
+                res.statusCode = 404;
+            }
+
+            process.nextTick(() => {
+                cb(res);
+                if (payload) {
+                    res.emit('data', payload);
+                }
+                res.emit('end');
+            });
+
+            return {
+                on: jest.fn()
+            };
+        });
+
+        const io = { emit: jest.fn() };
+        const deviceInfo = buildDeviceInfo({
+            trackName: 'Motorbreath',
+            artistName: 'Metallica',
+            albumName: "Kill 'Em All",
+            trackDuration: '00:03:08'
+        });
+        const serverSettings = buildServerSettings();
+
+        await lyrics.getLyricsForMetadata(io, deviceInfo, serverSettings);
+
+        expect(io.emit).toHaveBeenCalledWith('lyrics', expect.objectContaining({
+            status: 'ok',
+            syncedLyrics: '[01:23.63]It is. Going to\n[01:26.17]Take your breath away\n'
+        }));
+    });
+});

@@ -22,6 +22,7 @@ const LRCLIB_BASE_URL = "https://lrclib.net";
 const NEGATIVE_CACHE_TTL_MS = 10 * 60 * 1000;
 const MATCH_SCORE_THRESHOLD = 70;
 const PREFETCH_CONCURRENCY_FALLBACK = 4;
+const LYRICS_MERGE_THRESHOLD_SECONDS = 1.5;
 const PREFETCH_MODES = {
     OFF: "off",
     ALBUM: "album"
@@ -492,15 +493,120 @@ const fetchBestLyricsBySignature = async (signature, serverSettings, diagnostics
 };
 
 const setLyricsState = (io, deviceInfo, payload) => {
-    deviceInfo.lyrics = payload;
-    io.emit("lyrics", payload);
+    const preparedPayload = preprocessLyricsPayload(payload);
+    deviceInfo.lyrics = preparedPayload;
+    io.emit("lyrics", preparedPayload);
     log("Lyrics:", {
-        status: payload?.status,
-        provider: payload?.provider,
-        trackKey: payload?.trackKey,
-        signature: payload?.signature,
-        diagnostics: payload?.diagnostics
+        status: preparedPayload?.status,
+        provider: preparedPayload?.provider,
+        trackKey: preparedPayload?.trackKey,
+        signature: preparedPayload?.signature,
+        diagnostics: preparedPayload?.diagnostics
     });
+};
+
+const parseSyncedLyricLine = (line) => {
+    const match = line.match(/^(\[\d{2,}:\d{2}(?:\.\d{1,3})?\])(.*)$/);
+    if (!match) {
+        return null;
+    }
+
+    const timestamp = match[1];
+    const text = match[2] || "";
+    const timeParts = timestamp.match(/^\[(\d{2,}):(\d{2})(?:\.(\d{1,3}))?\]$/);
+    if (!timeParts) {
+        return null;
+    }
+
+    const minutes = Number(timeParts[1]);
+    const seconds = Number(timeParts[2]);
+    const fractionRaw = timeParts[3] || "0";
+    const fraction = Number((`0.${fractionRaw}`).slice(0, 5));
+
+    if ([minutes, seconds, fraction].some((value) => Number.isNaN(value))) {
+        return null;
+    }
+
+    return {
+        timestamp,
+        text,
+        seconds: (minutes * 60) + seconds + fraction
+    };
+};
+
+const buildMergedLyricText = (baseText, nextText) => {
+    const trimmedBase = baseText.trimEnd();
+    const trimmedNext = nextText.trim();
+    if (!trimmedNext) {
+        return baseText;
+    }
+    if (!trimmedBase) {
+        return trimmedNext;
+    }
+    if (trimmedBase.endsWith(".")) {
+        return `${trimmedBase} ${trimmedNext}`;
+    }
+    return `${trimmedBase}. ${trimmedNext}`;
+};
+
+const mergeFastSyncedLyrics = (syncedLyrics) => {
+    if (!syncedLyrics || typeof syncedLyrics !== "string") {
+        return syncedLyrics;
+    }
+
+    const lines = syncedLyrics.split("\n");
+    const mergedLines = [];
+    let pending = null;
+
+    const flushPending = () => {
+        if (!pending) {
+            return;
+        }
+        mergedLines.push(`${pending.timestamp}${pending.text}`);
+        pending = null;
+    };
+
+    lines.forEach((line) => {
+        const parsed = parseSyncedLyricLine(line);
+        if (!parsed) {
+            flushPending();
+            mergedLines.push(line);
+            return;
+        }
+
+        if (!pending) {
+            pending = parsed;
+            return;
+        }
+
+        const delta = parsed.seconds - pending.seconds;
+        const canMerge = delta > 0
+            && delta < LYRICS_MERGE_THRESHOLD_SECONDS
+            && pending.text.trim()
+            && parsed.text.trim();
+
+        if (canMerge) {
+            pending.text = buildMergedLyricText(pending.text, parsed.text);
+            return;
+        }
+
+        flushPending();
+        pending = parsed;
+    });
+
+    flushPending();
+    return mergedLines.join("\n");
+};
+
+const preprocessLyricsPayload = (payload) => {
+    if (!payload || payload.status !== "ok" || !payload.syncedLyrics) {
+        return payload;
+    }
+
+    return {
+        ...payload,
+        syncedLyrics: mergeFastSyncedLyrics(payload.syncedLyrics)
+    };
 };
 
 const setLyricsPrefetchState = (io, payload) => {
