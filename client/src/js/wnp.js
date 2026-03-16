@@ -58,6 +58,7 @@ WNP.d = {
     pendingLyricsLines: [],
     pendingLyricsTrackKey: null,
     waitingForSongStart: false,
+    recentSongSwitchAtMs: null,
     currentTrackKey: null,
     currentTrackCoverLocked: false,
     pendingTrackCoverUri: null,
@@ -770,14 +771,16 @@ WNP.setSocketDefinitions = function () {
 
         WNP.d.lastState = msg;
         if (WNP.d.waitingForSongStart && WNP.d.pendingLyricsLines.length > 0 && WNP.shouldUseStateForCurrentTrack(msg)) {
-            var relTimeSeconds = WNP.convertToSeconds(relTime);
-            if (relTimeSeconds <= 1) {
-                WNP.activateLyricsForTrackStart(relTime, timeStampDiff);
-            }
-            else {
-                // Lyrics can arrive late (or without a trusted state snapshot) after the song already advanced.
-                // In that case, activate immediately on the first matching state update.
-                WNP.activateLyricsForTrackStart(relTime, timeStampDiff);
+            if (!WNP.isLyricsProgressTooFarAhead(relTime, timeStampDiff)) {
+                var relTimeSeconds = WNP.convertToSeconds(relTime);
+                if (relTimeSeconds <= 1) {
+                    WNP.activateLyricsForTrackStart(relTime, timeStampDiff);
+                }
+                else {
+                    // Lyrics can arrive late (or without a trusted state snapshot) after the song already advanced.
+                    // In that case, activate immediately on the first matching state update.
+                    WNP.activateLyricsForTrackStart(relTime, timeStampDiff);
+                }
             }
         }
         WNP.updateLyricsProgress(relTime, timeStampDiff);
@@ -990,6 +993,7 @@ WNP.setSocketDefinitions = function () {
                 albumArtUriRaw: albumArtUriRaw,
                 albumArtUri: albumArtUri
             });
+            WNP.d.recentSongSwitchAtMs = Date.now();
             WNP.clearLyrics();
             if (albumArtUriRaw) {
                 WNP.trySetTrackCover(albumArtUri, "device");
@@ -1114,6 +1118,10 @@ WNP.setSocketDefinitions = function () {
         WNP.d.pendingLyricsTrackKey = msg.trackKey || null;
         WNP.d.waitingForSongStart = false;
 
+        if (WNP.isInSongSwitchGuardWindow()) {
+            WNP.activateLyricsForTrackStart("00:00:00", 0);
+        }
+
         if (WNP.d.lastState && WNP.shouldUseStateForCurrentTrack(WNP.d.lastState)) {
             var lastRelTime = WNP.convertToSeconds(WNP.d.lastState.RelTime || "00:00:00");
             var lastOffset = 0;
@@ -1121,6 +1129,10 @@ WNP.setSocketDefinitions = function () {
                 lastOffset = (WNP.d.lastState.stateTimeStamp && WNP.d.lastState.metadataTimeStamp)
                     ? Math.round((WNP.d.lastState.stateTimeStamp - WNP.d.lastState.metadataTimeStamp) / 1000)
                     : 0;
+            }
+            if (WNP.isLyricsProgressTooFarAhead(WNP.d.lastState.RelTime || "00:00:00", lastOffset)) {
+                WNP.d.waitingForSongStart = true;
+                return;
             }
             if (lastRelTime <= 1) {
                 // Fresh track start: initially pin lyrics to the beginning.
@@ -1526,6 +1538,22 @@ WNP.activateLyricsForTrackStart = function (relTime, timeStampDiff) {
     WNP.updateLyricsProgress(relTime, timeStampDiff);
 };
 
+WNP.isInSongSwitchGuardWindow = function () {
+    if (!WNP.d.recentSongSwitchAtMs) {
+        return false;
+    }
+    return (Date.now() - WNP.d.recentSongSwitchAtMs) <= 3000;
+};
+
+WNP.isLyricsProgressTooFarAhead = function (relTime, timeStampDiff) {
+    if (!WNP.isInSongSwitchGuardWindow()) {
+        return false;
+    }
+    var relSeconds = WNP.convertToSeconds(relTime || "00:00:00");
+    var offsetSeconds = timeStampDiff || 0;
+    return (relSeconds + offsetSeconds) > 5;
+};
+
 WNP.shouldUseStateForCurrentTrack = function (stateMsg) {
     if (!stateMsg) {
         return false;
@@ -1670,6 +1698,10 @@ WNP.setLyricsPending = function (isPending) {
  */
 WNP.updateLyricsProgress = function (relTime, timeStampDiff) {
     if (!WNP.d.lyricsLines || WNP.d.lyricsLines.length === 0) {
+        return;
+    }
+
+    if (WNP.isLyricsProgressTooFarAhead(relTime, timeStampDiff)) {
         return;
     }
 
