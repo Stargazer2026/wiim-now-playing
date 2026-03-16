@@ -25,8 +25,8 @@ WNP.s = {
         "chkLyricsEnabled",
         "lyricsOffsetMs",
         "chkLyricsInsertBlankLineForLongGaps",
-        "lyricsLongGapThresholdSec",
-        "lyricsLongGapBlankLineOffsetSec",
+        "lyricsMediumGapSec",
+        "lyricsLongGapSec",
         "chkLyricsCacheEnabled",
         "lyricsCacheSizeMB",
         "lyricsPrefetchMode",
@@ -51,10 +51,12 @@ WNP.d = {
     lyrics: null, // Current lyrics payload
     lyricsIndex: null, // Current lyrics line index
     lyricsLines: [], // Parsed lyrics lines
-    lyricsSuppressPrevForIndex: null, // Keep prev line empty for a specific index transition
+    lyricsLongGapContextIndex: null, // Current long-gap context index
+    lyricsTransitionTimer: null, // Single timer for all three lyrics lines
     lyricsCookieApplied: false, // Track if cookie setting has been applied
     currentLyricsTrackKey: null,
     currentTrackMetadataTimeStamp: null,
+    currentTrackDurationSec: null,
     pendingLyricsLines: [],
     pendingLyricsTrackKey: null,
     waitingForSongStart: false,
@@ -267,32 +269,32 @@ WNP.setUIListeners = function () {
         });
     }
 
-    if (this.r.lyricsLongGapThresholdSec) {
-        this.r.lyricsLongGapThresholdSec.addEventListener("change", function () {
-            var thresholdSec = parseInt(this.value, 10);
-            if (isNaN(thresholdSec) || thresholdSec < 1) {
-                thresholdSec = 1;
+    if (this.r.lyricsMediumGapSec) {
+        this.r.lyricsMediumGapSec.addEventListener("change", function () {
+            var mediumGapSec = parseInt(this.value, 10);
+            if (isNaN(mediumGapSec) || mediumGapSec < 10) {
+                mediumGapSec = 10;
             }
             socket.emit("server-settings-update", {
                 features: {
                     lyrics: {
-                        longGapThresholdSec: thresholdSec
+                        mediumGapSec: mediumGapSec
                     }
                 }
             });
         });
     }
 
-    if (this.r.lyricsLongGapBlankLineOffsetSec) {
-        this.r.lyricsLongGapBlankLineOffsetSec.addEventListener("change", function () {
-            var offsetSec = parseInt(this.value, 10);
-            if (isNaN(offsetSec) || offsetSec < 0) {
-                offsetSec = 0;
+    if (this.r.lyricsLongGapSec) {
+        this.r.lyricsLongGapSec.addEventListener("change", function () {
+            var longGapSec = parseInt(this.value, 10);
+            if (isNaN(longGapSec) || longGapSec < 16) {
+                longGapSec = 16;
             }
             socket.emit("server-settings-update", {
                 features: {
                     lyrics: {
-                        longGapBlankLineOffsetSec: offsetSec
+                        longGapSec: longGapSec
                     }
                 }
             });
@@ -596,17 +598,17 @@ WNP.setSocketDefinitions = function () {
         if (WNP.r.chkLyricsInsertBlankLineForLongGaps) {
             WNP.r.chkLyricsInsertBlankLineForLongGaps.checked = !(msg && msg.features && msg.features.lyrics && msg.features.lyrics.insertBlankLineForLongGaps === false);
         }
-        if (WNP.r.lyricsLongGapThresholdSec) {
-            var thresholdSec = (msg && msg.features && msg.features.lyrics && typeof msg.features.lyrics.longGapThresholdSec === "number")
-                ? msg.features.lyrics.longGapThresholdSec
+        if (WNP.r.lyricsMediumGapSec) {
+            var mediumGapSec = (msg && msg.features && msg.features.lyrics && typeof msg.features.lyrics.mediumGapSec === "number")
+                ? msg.features.lyrics.mediumGapSec
                 : 10;
-            WNP.r.lyricsLongGapThresholdSec.value = thresholdSec;
+            WNP.r.lyricsMediumGapSec.value = mediumGapSec;
         }
-        if (WNP.r.lyricsLongGapBlankLineOffsetSec) {
-            var gapOffsetSec = (msg && msg.features && msg.features.lyrics && typeof msg.features.lyrics.longGapBlankLineOffsetSec === "number")
-                ? msg.features.lyrics.longGapBlankLineOffsetSec
-                : 7;
-            WNP.r.lyricsLongGapBlankLineOffsetSec.value = gapOffsetSec;
+        if (WNP.r.lyricsLongGapSec) {
+            var longGapSec = (msg && msg.features && msg.features.lyrics && typeof msg.features.lyrics.longGapSec === "number")
+                ? msg.features.lyrics.longGapSec
+                : 20;
+            WNP.r.lyricsLongGapSec.value = longGapSec;
         }
         if (WNP.r.chkLyricsCacheEnabled || WNP.r.lyricsCacheSizeMB || WNP.r.lyricsPrefetchMode) {
             var cacheSettings = (msg && msg.features && msg.features.lyrics && msg.features.lyrics.cache) ? msg.features.lyrics.cache : {};
@@ -770,6 +772,7 @@ WNP.setSocketDefinitions = function () {
         WNP.r.progressPercent.children[0].setAttribute("style", "width:" + oPlayerProgress.percent + "%");
 
         WNP.d.lastState = msg;
+        WNP.d.currentTrackDurationSec = WNP.parseDurationToSeconds(trackDuration);
         if (WNP.d.waitingForSongStart && WNP.d.pendingLyricsLines.length > 0 && WNP.shouldUseStateForCurrentTrack(msg)) {
             if (!WNP.isLyricsProgressTooFarAhead(relTime, timeStampDiff)) {
                 var relTimeSeconds = WNP.convertToSeconds(relTime);
@@ -1114,7 +1117,15 @@ WNP.setSocketDefinitions = function () {
             return;
         }
 
-        WNP.d.pendingLyricsLines = parsedLyrics;
+        var lyricsDurationSec = WNP.parseDurationToSeconds(msg.duration);
+        if (lyricsDurationSec === null && msg.signature && msg.signature.duration) {
+            lyricsDurationSec = WNP.parseDurationToSeconds(msg.signature.duration);
+        }
+        if (lyricsDurationSec === null && typeof WNP.d.currentTrackDurationSec === "number") {
+            lyricsDurationSec = WNP.d.currentTrackDurationSec;
+        }
+
+        WNP.d.pendingLyricsLines = WNP.buildDisplayLyricsLines(parsedLyrics, lyricsDurationSec);
         WNP.d.pendingLyricsTrackKey = msg.trackKey || null;
         WNP.d.waitingForSongStart = false;
 
@@ -1369,98 +1380,162 @@ WNP.parseSyncedLyrics = function (syncedLyrics) {
         .sort((a, b) => a.timeMs - b.timeMs);
 };
 
-WNP.getLyricsLongGapSettings = function () {
+WNP.getLyricsGapSettings = function () {
     var lyricsSettings = WNP.d.serverSettings && WNP.d.serverSettings.features && WNP.d.serverSettings.features.lyrics
         ? WNP.d.serverSettings.features.lyrics
         : {};
+    var mediumGapSec = (typeof lyricsSettings.mediumGapSec === "number") ? lyricsSettings.mediumGapSec : 10;
+    var longGapSec = (typeof lyricsSettings.longGapSec === "number") ? lyricsSettings.longGapSec : 20;
+
+    mediumGapSec = Math.max(10, Math.round(mediumGapSec));
+    longGapSec = Math.max(16, Math.round(longGapSec));
+    if (longGapSec <= mediumGapSec) {
+        longGapSec = mediumGapSec + 1;
+    }
+
     return {
-        enabled: lyricsSettings.insertBlankLineForLongGaps !== false,
-        thresholdMs: ((typeof lyricsSettings.longGapThresholdSec === "number") ? lyricsSettings.longGapThresholdSec : 10) * 1000,
-        offsetMs: ((typeof lyricsSettings.longGapBlankLineOffsetSec === "number") ? lyricsSettings.longGapBlankLineOffsetSec : 7) * 1000
+        mediumGapMs: mediumGapSec * 1000,
+        longGapMs: longGapSec * 1000,
+        introShiftMs: 3000,
+        outroShiftMs: 3000,
+        noteSymbol: "♪"
     };
 };
 
-WNP.getLyricsSongDurationMs = function () {
-    var durationSeconds = WNP.parseDurationToSeconds(
-        (WNP.d.lastState && WNP.d.lastState.TrackDuration)
-        || (WNP.d.lyrics && WNP.d.lyrics.duration)
-        || null
-    );
-    if (durationSeconds === null) {
-        return null;
+WNP.buildDisplayLyricsLines = function (lyricsLines, trackDurationSec) {
+    if (!lyricsLines || lyricsLines.length === 0) {
+        return [];
     }
-    return durationSeconds * 1000;
+
+    var settings = WNP.getLyricsGapSettings();
+    var displayLines = lyricsLines.map(function (line) {
+        return {
+            timeMs: line.timeMs,
+            text: line.text,
+            suppressPrevOnActivate: false
+        };
+    });
+
+    var timelineLines = displayLines.slice();
+    var durationMs = (typeof trackDurationSec === "number" && Number.isFinite(trackDurationSec) && trackDurationSec > 0)
+        ? Math.round(trackDurationSec * 1000)
+        : null;
+
+    if (durationMs !== null) {
+        var lastLine = timelineLines[timelineLines.length - 1];
+        if (lastLine && durationMs > lastLine.timeMs && (durationMs - lastLine.timeMs) >= settings.mediumGapMs) {
+            timelineLines.push({
+                timeMs: durationMs,
+                text: "",
+                suppressPrevOnActivate: false
+            });
+        }
+    }
+
+    for (let i = 0; i < timelineLines.length - 1; i++) {
+        var line = timelineLines[i];
+        var nextLine = timelineLines[i + 1];
+
+        var gapMs = nextLine.timeMs - line.timeMs;
+        if (gapMs < settings.mediumGapMs) {
+            continue;
+        }
+
+        var noteTimeMs = line.timeMs + settings.mediumGapMs;
+        if (noteTimeMs >= nextLine.timeMs) {
+            continue;
+        }
+
+        var noteEntry = {
+            timeMs: noteTimeMs,
+            text: settings.noteSymbol,
+            isGapNote: true
+        };
+
+        if (gapMs >= settings.longGapMs) {
+            noteEntry.isLongGapNote = true;
+            noteEntry.longGapOriginalMs = gapMs;
+        }
+
+        displayLines.push(noteEntry);
+
+    }
+
+    return displayLines.sort((a, b) => a.timeMs - b.timeMs);
 };
 
 WNP.getLongGapDisplayState = function (currentMs, currentIndex) {
-    if (!WNP.d.lyricsLines || WNP.d.lyricsLines.length === 0 || currentIndex < 0 || currentIndex >= WNP.d.lyricsLines.length) {
-        return {
-            isPending: false,
-            hidePrev: false,
-            blankNext: false
+    var currentLineObj = WNP.d.lyricsLines[currentIndex];
+    var prevLineObj = currentIndex > 0 ? WNP.d.lyricsLines[currentIndex - 1] : null;
+    var nextLineObj = WNP.d.lyricsLines[currentIndex + 1] || null;
+    var settings = WNP.getLyricsGapSettings();
+
+    if (currentLineObj && currentLineObj.isLongGapNote && !nextLineObj) {
+        var durationMs = (typeof WNP.d.currentTrackDurationSec === "number" && Number.isFinite(WNP.d.currentTrackDurationSec) && WNP.d.currentTrackDurationSec > 0)
+            ? Math.round(WNP.d.currentTrackDurationSec * 1000)
+            : null;
+        var remainingGapMs = (typeof currentLineObj.longGapOriginalMs === "number" && Number.isFinite(currentLineObj.longGapOriginalMs))
+            ? Math.max(settings.longGapMs, currentLineObj.longGapOriginalMs - settings.mediumGapMs)
+            : settings.longGapMs;
+        var fallbackNextTimeMs = durationMs && durationMs > currentLineObj.timeMs
+            ? durationMs
+            : (currentLineObj.timeMs + remainingGapMs);
+
+        nextLineObj = {
+            timeMs: fallbackNextTimeMs,
+            text: "",
+            suppressPrevOnActivate: false
         };
     }
 
-    var settings = WNP.getLyricsLongGapSettings();
-    if (!settings.enabled || settings.thresholdMs <= 0) {
+    var defaultPrev = currentLineObj && currentLineObj.suppressPrevOnActivate
+        ? ""
+        : (prevLineObj ? prevLineObj.text : "");
+
+    var defaultState = {
+        mode: "normal",
+        prevLine: defaultPrev,
+        currentLine: currentLineObj ? currentLineObj.text : "",
+        nextLine: nextLineObj ? nextLineObj.text : "",
+        pending: false
+    };
+
+    if (!currentLineObj || !currentLineObj.isLongGapNote || !nextLineObj) {
+        return defaultState;
+    }
+
+    var clearPrevAtMs = currentLineObj.timeMs + settings.outroShiftMs;
+    var preloadCurrentAtMs = Math.max(currentLineObj.timeMs, nextLineObj.timeMs - settings.introShiftMs);
+
+    if (currentMs < clearPrevAtMs) {
         return {
-            isPending: false,
-            hidePrev: false,
-            blankNext: false
+            mode: "long-phase-a",
+            prevLine: prevLineObj ? prevLineObj.text : "",
+            currentLine: currentLineObj.text,
+            nextLine: nextLineObj.text,
+            pending: false
         };
     }
 
-    var currentLine = WNP.d.lyricsLines[currentIndex];
-    var nextLine = WNP.d.lyricsLines[currentIndex + 1];
-    var pendingStartMs = currentLine.timeMs + settings.offsetMs;
-    var hidePrevStartMs = currentLine.timeMs + settings.thresholdMs;
-
-    if (nextLine) {
-        var gapEndMs = nextLine.timeMs;
-        var gapMs = gapEndMs - currentLine.timeMs;
-        if (gapMs < settings.thresholdMs || currentMs < pendingStartMs || currentMs >= gapEndMs) {
-            if (gapMs >= settings.thresholdMs && currentMs >= currentLine.timeMs && currentMs < pendingStartMs) {
-                return {
-                    isPending: false,
-                    hidePrev: false,
-                    blankNext: true
-                };
-            }
-            return {
-                isPending: false,
-                hidePrev: false,
-                blankNext: false
-            };
-        }
+    if (currentMs < preloadCurrentAtMs) {
         return {
-            isPending: true,
-            hidePrev: currentMs >= hidePrevStartMs,
-            blankNext: false
+            mode: "long-phase-b",
+            prevLine: "",
+            currentLine: currentLineObj.text,
+            nextLine: nextLineObj.text,
+            pending: false
         };
     }
 
-    var songDurationMs = WNP.getLyricsSongDurationMs();
-    if (songDurationMs === null) {
-        return {
-            isPending: false,
-            hidePrev: false,
-            blankNext: false
-        };
-    }
-
-    var trailingGapMs = songDurationMs - currentLine.timeMs;
-    if (trailingGapMs < settings.thresholdMs || currentMs < pendingStartMs || currentMs > songDurationMs) {
-        return {
-            isPending: false,
-            hidePrev: false,
-            blankNext: false
-        };
-    }
+    var phaseCNextLine = WNP.d.lyricsLines[currentIndex + 2] ? WNP.d.lyricsLines[currentIndex + 2].text : "";
 
     return {
-        isPending: true,
-        hidePrev: currentMs >= hidePrevStartMs,
-        blankNext: false
+        mode: "long-phase-c",
+        prevLine: currentLineObj.text,
+        currentLine: nextLineObj.text,
+        nextLine: phaseCNextLine,
+        pending: true,
+        upcomingIndex: currentIndex + 1
     };
 };
 
@@ -1545,10 +1620,13 @@ WNP.activateLyricsForTrackStart = function (relTime, timeStampDiff) {
     }
     WNP.d.lyricsLines = WNP.d.pendingLyricsLines;
     WNP.d.pendingLyricsLines = [];
+    WNP.d.currentLyricsTrackKey = WNP.d.pendingLyricsTrackKey;
     WNP.d.pendingLyricsTrackKey = null;
     WNP.d.lyricsIndex = null;
-    WNP.d.lyricsSuppressPrevForIndex = null;
-    WNP.r.lyricsContainer.classList.add("is-visible");
+    WNP.d.lyricsLongGapContextIndex = null;
+    if (WNP.r.lyricsContainer) {
+        WNP.r.lyricsContainer.classList.add("is-visible");
+    }
     WNP.setLyricsPending(true);
     WNP.setLyricsLines(
         "",
@@ -1597,7 +1675,7 @@ WNP.clearLyrics = function () {
     WNP.setLyricsLines("", "", "");
     WNP.d.lyricsLines = [];
     WNP.d.lyricsIndex = null;
-    WNP.d.lyricsSuppressPrevForIndex = null;
+    WNP.d.lyricsLongGapContextIndex = null;
     WNP.d.pendingLyricsLines = [];
     WNP.d.pendingLyricsTrackKey = null;
     WNP.d.waitingForSongStart = false;
@@ -1744,45 +1822,30 @@ WNP.updateLyricsProgress = function (relTime, timeStampDiff) {
         WNP.setLyricsPending(true);
         WNP.setLyricsLines(
             "",
-            WNP.d.lyricsLines[1] ? WNP.d.lyricsLines[0].text : "",
-            WNP.d.lyricsLines[2] ? WNP.d.lyricsLines[1].text : ""
+            WNP.d.lyricsLines[0] ? WNP.d.lyricsLines[0].text : "",
+            WNP.d.lyricsLines[1] ? WNP.d.lyricsLines[1].text : ""
         );
         WNP.d.lyricsIndex = -1;
         return;
     }
 
-    var longGapState = WNP.getLongGapDisplayState(currentMs, currentIndex);
-    if (WNP.d.lyricsIndex === currentIndex && !longGapState.isPending && !longGapState.blankNext) {
+    var state = WNP.getLongGapDisplayState(currentMs, currentIndex);
+    var activeIndex = (typeof state.upcomingIndex === "number") ? state.upcomingIndex : currentIndex;
+    var wasPending = WNP.r.lyricsContainer ? WNP.r.lyricsContainer.classList.contains("is-pending") : false;
+    var pendingChanged = wasPending !== Boolean(state.pending);
+    WNP.setLyricsPending(Boolean(state.pending));
+
+    if (WNP.d.lyricsIndex === activeIndex
+        && WNP.r.lyricsPrev.innerText === (state.prevLine || "")
+        && WNP.r.lyricsCurrent.innerText === (state.currentLine || "")
+        && WNP.r.lyricsNext.innerText === (state.nextLine || "")
+        && !pendingChanged) {
         return;
     }
 
-    if (longGapState.isPending) {
-        WNP.setLyricsPending(true);
-        var pendingPrevLine = longGapState.hidePrev ? "" : WNP.d.lyricsLines[currentIndex].text;
-        var pendingCurrentLine = longGapState.hidePrev
-            ? (WNP.d.lyricsLines[currentIndex + 1] ? WNP.d.lyricsLines[currentIndex + 1].text : "")
-            : "";
-        var pendingNextLine = longGapState.hidePrev
-            ? (WNP.d.lyricsLines[currentIndex + 2] ? WNP.d.lyricsLines[currentIndex + 2].text : "")
-            : (WNP.d.lyricsLines[currentIndex + 1] ? WNP.d.lyricsLines[currentIndex + 1].text : "");
-        WNP.setLyricsLines(pendingPrevLine, pendingCurrentLine, pendingNextLine);
-        WNP.d.lyricsSuppressPrevForIndex = (longGapState.hidePrev && WNP.d.lyricsLines[currentIndex + 1]) ? currentIndex + 1 : null;
-        WNP.d.lyricsIndex = currentIndex;
-        return;
-    }
-
-    WNP.setLyricsPending(false);
-    WNP.d.lyricsIndex = currentIndex;
-    var shouldSuppressPrev = WNP.d.lyricsSuppressPrevForIndex === currentIndex;
-    var prevLine = shouldSuppressPrev ? "" : (currentIndex > 0 ? WNP.d.lyricsLines[currentIndex - 1].text : "");
-    if (shouldSuppressPrev) {
-        WNP.d.lyricsSuppressPrevForIndex = null;
-    }
-    var currentLine = WNP.d.lyricsLines[currentIndex].text;
-    var nextLine = longGapState.blankNext
-        ? ""
-        : (WNP.d.lyricsLines[currentIndex + 1] ? WNP.d.lyricsLines[currentIndex + 1].text : "");
-    WNP.setLyricsLines(prevLine, currentLine, nextLine);
+    WNP.d.lyricsIndex = activeIndex;
+    WNP.d.lyricsLongGapContextIndex = currentIndex;
+    WNP.setLyricsLines(state.prevLine, state.currentLine, state.nextLine);
 };
 
 /**
@@ -1796,38 +1859,38 @@ WNP.setLyricsLines = function (prevLine, currentLine, nextLine) {
     if (!WNP.r.lyricsPrev || !WNP.r.lyricsCurrent || !WNP.r.lyricsNext) {
         return;
     }
-    WNP.setLyricsLineWithTransition(WNP.r.lyricsPrev, prevLine);
-    WNP.setLyricsLineWithTransition(WNP.r.lyricsCurrent, currentLine);
-    WNP.setLyricsLineWithTransition(WNP.r.lyricsNext, nextLine);
-};
+    var nextPrev = prevLine || "";
+    var nextCurrent = currentLine || "";
+    var nextNext = nextLine || "";
 
-/**
- * Update a single lyrics line with a soft fade transition.
- * @param {HTMLElement} lineEl - Lyrics line element.
- * @param {string} text - New line text.
- * @returns {undefined}
- */
-WNP.setLyricsLineWithTransition = function (lineEl, text) {
-    if (!lineEl) {
+    var sameContent = WNP.r.lyricsPrev.innerText === nextPrev
+        && WNP.r.lyricsCurrent.innerText === nextCurrent
+        && WNP.r.lyricsNext.innerText === nextNext;
+    var isRepeatPassage = (nextNext !== "" && nextNext === nextCurrent) || (nextCurrent !== "" && nextCurrent === nextPrev);
+    var shouldAnimate = !sameContent || isRepeatPassage;
+
+    if (!shouldAnimate) {
         return;
     }
 
-    var nextText = text || "";
-    if (lineEl.innerText === nextText && !lineEl.dataset.transitioning) {
-        return;
+    if (WNP.d.lyricsTransitionTimer) {
+        clearTimeout(WNP.d.lyricsTransitionTimer);
+        WNP.d.lyricsTransitionTimer = null;
     }
 
-    if (lineEl._lyricsTransitionTimer) {
-        clearTimeout(lineEl._lyricsTransitionTimer);
-    }
+    WNP.r.lyricsPrev.classList.add("is-transitioning");
+    WNP.r.lyricsCurrent.classList.add("is-transitioning");
+    WNP.r.lyricsNext.classList.add("is-transitioning");
 
-    lineEl.dataset.transitioning = "1";
-    lineEl.classList.add("is-transitioning");
-    lineEl._lyricsTransitionTimer = setTimeout(function () {
-        lineEl.innerText = nextText;
-        lineEl.classList.remove("is-transitioning");
-        lineEl.dataset.transitioning = "";
-        lineEl._lyricsTransitionTimer = null;
+    WNP.d.lyricsTransitionTimer = setTimeout(function () {
+        WNP.r.lyricsPrev.innerText = nextPrev;
+        WNP.r.lyricsCurrent.innerText = nextCurrent;
+        WNP.r.lyricsNext.innerText = nextNext;
+
+        WNP.r.lyricsPrev.classList.remove("is-transitioning");
+        WNP.r.lyricsCurrent.classList.remove("is-transitioning");
+        WNP.r.lyricsNext.classList.remove("is-transitioning");
+        WNP.d.lyricsTransitionTimer = null;
     }, 70);
 };
 

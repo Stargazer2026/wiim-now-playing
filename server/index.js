@@ -95,8 +95,8 @@ let serverSettings = { // Placeholder for current server settings
             "provider": "lrclib",
             "offsetMs": 0,
             "insertBlankLineForLongGaps": true,
-            "longGapThresholdSec": 10,
-            "longGapBlankLineOffsetSec": 7,
+            "mediumGapSec": 10,
+            "longGapSec": 20,
             "cache": {
                 "enabled": true,
                 "maxSizeMB": 50,
@@ -488,12 +488,23 @@ io.on("connection", (socket) => {
             if (typeof msg.features.lyrics.insertBlankLineForLongGaps === "boolean") {
                 serverSettings.features.lyrics.insertBlankLineForLongGaps = msg.features.lyrics.insertBlankLineForLongGaps;
             }
-            if (typeof msg.features.lyrics.longGapThresholdSec === "number") {
-                serverSettings.features.lyrics.longGapThresholdSec = Math.max(1, Math.round(msg.features.lyrics.longGapThresholdSec));
+            var currentMediumGap = (typeof serverSettings.features.lyrics.mediumGapSec === "number")
+                ? serverSettings.features.lyrics.mediumGapSec
+                : 10;
+            var currentLongGap = (typeof serverSettings.features.lyrics.longGapSec === "number")
+                ? serverSettings.features.lyrics.longGapSec
+                : 20;
+            if (typeof msg.features.lyrics.mediumGapSec === "number") {
+                currentMediumGap = Math.max(10, Math.round(msg.features.lyrics.mediumGapSec));
             }
-            if (typeof msg.features.lyrics.longGapBlankLineOffsetSec === "number") {
-                serverSettings.features.lyrics.longGapBlankLineOffsetSec = Math.max(0, Math.round(msg.features.lyrics.longGapBlankLineOffsetSec));
+            if (typeof msg.features.lyrics.longGapSec === "number") {
+                currentLongGap = Math.max(16, Math.round(msg.features.lyrics.longGapSec));
             }
+            if (currentLongGap <= currentMediumGap) {
+                currentLongGap = currentMediumGap + 1;
+            }
+            serverSettings.features.lyrics.mediumGapSec = currentMediumGap;
+            serverSettings.features.lyrics.longGapSec = currentLongGap;
             if (msg.features.lyrics.cache) {
                 if (typeof msg.features.lyrics.cache.enabled === "boolean") {
                     serverSettings.features.lyrics.cache.enabled = msg.features.lyrics.cache.enabled;

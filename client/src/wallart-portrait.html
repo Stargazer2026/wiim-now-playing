@@ -187,16 +187,16 @@
                                     </div>
                                     <div class="row g-2 mt-1">
                                         <div class="col-sm-6">
-                                            <label class="form-label" for="lyricsLongGapThresholdSec">Long gap threshold (s)</label>
-                                            <input class="form-control" type="number" id="lyricsLongGapThresholdSec" step="1" min="1" max="120">
+                                            <label class="form-label" for="lyricsMediumGapSec">Medium gap (s)</label>
+                                            <input class="form-control" type="number" id="lyricsMediumGapSec" step="1" min="10" max="120">
                                         </div>
                                         <div class="col-sm-6">
-                                            <label class="form-label" for="lyricsLongGapBlankLineOffsetSec">Blank line offset (s)</label>
-                                            <input class="form-control" type="number" id="lyricsLongGapBlankLineOffsetSec" step="1" min="0" max="120">
+                                            <label class="form-label" for="lyricsLongGapSec">Long gap (s)</label>
+                                            <input class="form-control" type="number" id="lyricsLongGapSec" step="1" min="16" max="120">
                                         </div>
                                     </div>
                                     <div class="form-text mt-1">
-                                        If two lyrics lines are at least the threshold apart, an empty line is inserted after the configured offset.
+                                        For medium gaps (≥ Medium gap), a note symbol is shown. For long gaps (≥ Long gap), blank-line transition mode is used.
                                     </div>
                                 </div>
 
