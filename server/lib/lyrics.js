@@ -1306,11 +1306,13 @@ const controlLyricsForCurrentTrack = async (action, io, deviceInfo, serverSettin
     }
 
     if (action === "switch-alternative") {
+        const diagnostics = buildDiagnostics(deviceInfo?.metadata, deviceInfo, serverSettings);
+        populateCacheDiagnostics(diagnostics, serverSettings);
         const excludedId = deviceInfo?.lyrics?.id || null;
         lyricsCache.deleteCachedLyricsByKey(trackKey, serverSettings);
         negativeCache.delete(trackKey);
         inFlightRequests.delete(trackKey);
-        const payload = await fetchLyricsForSignature(signature, trackKey, serverSettings, null, {
+        const payload = await fetchLyricsForSignature(signature, trackKey, serverSettings, diagnostics, {
             forceRemote: true,
             selectAlternative: true,
             excludedId
@@ -1318,8 +1320,12 @@ const controlLyricsForCurrentTrack = async (action, io, deviceInfo, serverSettin
         if (!payload || payload.status !== "ok") {
             return { ok: false, action, reason: "no-alternative-match" };
         }
+        diagnostics.totalMs = Date.now() - diagnostics.requestedAt;
         const storeResult = lyricsCache.storeLyrics(payload, serverSettings);
-        setLyricsState(io, deviceInfo, payload);
+        setLyricsState(io, deviceInfo, {
+            ...payload,
+            diagnostics
+        });
         return { ok: true, action, switchedToId: payload.id || null, stored: Boolean(storeResult.stored) };
     }
 
