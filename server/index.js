@@ -338,6 +338,66 @@ const executeDeviceApiCommand = (command, res, extraPayload = {}) => {
     });
 };
 
+const getVolumeDelta = (req, res) => {
+    const rawDelta = req.query && req.query.delta !== undefined
+        ? req.query.delta
+        : "5";
+    const delta = Number.parseInt(rawDelta, 10);
+    if (!Number.isInteger(delta) || delta <= 0) {
+        res.status(400).json({
+            ok: false,
+            reason: "invalid-delta",
+            details: "delta must be an integer > 0"
+        });
+        return null;
+    }
+    return delta;
+};
+
+const getCurrentVolume = () => {
+    const metadataVolume = deviceInfo && deviceInfo.metadata
+        ? Number.parseInt(deviceInfo.metadata.CurrentVolume, 10)
+        : NaN;
+    if (Number.isInteger(metadataVolume)) {
+        return metadataVolume;
+    }
+    const stateVolume = deviceInfo && deviceInfo.state
+        ? Number.parseInt(deviceInfo.state.CurrentVolume, 10)
+        : NaN;
+    if (Number.isInteger(stateVolume)) {
+        return stateVolume;
+    }
+    return null;
+};
+
+const changeVolumeRelative = (req, res, direction) => {
+    const delta = getVolumeDelta(req, res);
+    if (delta === null) {
+        return;
+    }
+
+    const currentVolume = getCurrentVolume();
+    if (!Number.isInteger(currentVolume)) {
+        res.status(409).json({
+            ok: false,
+            reason: "volume-unavailable",
+            details: "current volume is not available yet"
+        });
+        return;
+    }
+
+    const nextVolumeRaw = direction === "up"
+        ? currentVolume + delta
+        : currentVolume - delta;
+    const nextVolume = Math.max(0, Math.min(100, nextVolumeRaw));
+    executeDeviceApiCommand(`setPlayerCmd:vol:${nextVolume}`, res, {
+        direction,
+        delta,
+        previousVolume: currentVolume,
+        targetVolume: nextVolume
+    });
+};
+
 app.get("/api/remote/play-pause-toggle", limiter, function (req, res) {
     const currentTransportState = (deviceInfo && deviceInfo.state && deviceInfo.state.CurrentTransportState)
         ? deviceInfo.state.CurrentTransportState
@@ -352,6 +412,14 @@ app.get("/api/remote/forward", limiter, function (req, res) {
 
 app.get("/api/remote/backward", limiter, function (req, res) {
     executeDeviceAction("Previous", res);
+});
+
+app.get("/api/remote/volume-up", limiter, function (req, res) {
+    changeVolumeRelative(req, res, "up");
+});
+
+app.get("/api/remote/volume-down", limiter, function (req, res) {
+    changeVolumeRelative(req, res, "down");
 });
 
 app.get("/api/remote/preset/:id", limiter, function (req, res) {
