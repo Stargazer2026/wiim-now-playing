@@ -296,6 +296,77 @@ app.get("/api/lyrics-control-state", limiter, function (req, res) {
     res.json(controls);
 });
 
+const executeDeviceAction = (action, res) => {
+    if (!serverSettings.selectedDevice.location) {
+        res.status(409).json({
+            ok: false,
+            reason: "no-device-selected"
+        });
+        return;
+    }
+    if (!Array.isArray(serverSettings.selectedDevice.actions) || !serverSettings.selectedDevice.actions.includes(action)) {
+        res.status(409).json({
+            ok: false,
+            reason: "action-not-supported",
+            action
+        });
+        return;
+    }
+    upnp.callDeviceAction(io, action, deviceInfo, serverSettings);
+    res.json({
+        ok: true,
+        type: "upnp-action",
+        action
+    });
+};
+
+const executeDeviceApiCommand = (command, res, extraPayload = {}) => {
+    if (!serverSettings.selectedDevice.location) {
+        res.status(409).json({
+            ok: false,
+            reason: "no-device-selected"
+        });
+        return;
+    }
+
+    httpApi.callApi(io, command, serverSettings);
+    res.json({
+        ok: true,
+        type: "http-api-command",
+        command,
+        ...extraPayload
+    });
+};
+
+app.get("/api/remote/play-pause-toggle", limiter, function (req, res) {
+    const currentTransportState = (deviceInfo && deviceInfo.state && deviceInfo.state.CurrentTransportState)
+        ? deviceInfo.state.CurrentTransportState
+        : null;
+    const action = currentTransportState === "PLAYING" ? "Pause" : "Play";
+    executeDeviceAction(action, res);
+});
+
+app.get("/api/remote/forward", limiter, function (req, res) {
+    executeDeviceAction("Next", res);
+});
+
+app.get("/api/remote/backward", limiter, function (req, res) {
+    executeDeviceAction("Previous", res);
+});
+
+app.get("/api/remote/preset/:id", limiter, function (req, res) {
+    const presetId = Number.parseInt(req.params.id, 10);
+    if (!Number.isInteger(presetId) || presetId <= 0) {
+        res.status(400).json({
+            ok: false,
+            reason: "invalid-preset-id",
+            details: "preset id must be an integer > 0"
+        });
+        return;
+    }
+    executeDeviceApiCommand(`MCUKeyShortClick:${presetId}`, res, { presetId });
+});
+
 app.post("/api/lyrics-control", limiter, express.json(), async function (req, res) {
     const action = req.body && typeof req.body.action === "string" ? req.body.action : "";
     try {

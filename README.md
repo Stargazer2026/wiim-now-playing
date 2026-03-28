@@ -159,6 +159,7 @@ If you already have a docker container running this app and want to do an update
 
 ## Also see
 
+- [REST API (Remote-Steuerung)](docs/REST-API.md)
 - [Development and Debugging](docs/DevelopmentAndDebugging.md)
 - [Plan](docs/Plan.md)
 - [Design](docs/Design.md)
