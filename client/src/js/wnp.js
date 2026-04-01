@@ -1490,9 +1490,9 @@ WNP.updateSleepTimerOverlay = function () {
     }
     var remainingMs = WNP.getSleepTimerRemainingMs();
     if (remainingMs === null) {
-        WNP.r.sleepTimerOverlay.innerHTML = "<i class=\"bi bi-alarm\"></i><span>Song end</span>";
+        WNP.r.sleepTimerOverlay.innerHTML = "<i class=\"bi bi-clock-history\"></i><span>Song end</span>";
     } else {
-        WNP.r.sleepTimerOverlay.innerHTML = "<i class=\"bi bi-alarm\"></i><span>" + WNP.formatRemainingTimer(remainingMs) + "</span>";
+        WNP.r.sleepTimerOverlay.innerHTML = "<i class=\"bi bi-clock-history\"></i><span>" + WNP.formatRemainingTimer(remainingMs) + "</span>";
     }
     WNP.r.sleepTimerOverlay.classList.add("is-visible");
 };
