@@ -34,7 +34,7 @@ WNP.s = {
         "selCoverArtProvider",
         "coverArtMemoryPoolMB",
         "chkWledEnabled",
-        "chkWledQuickToggle",
+        "btnWledQuickToggle",
         "wledHost",
         "wledPreset",
         "wledToggleUrl",
@@ -159,6 +159,21 @@ WNP.emitWledSettingsUpdate = function (changes) {
             wled: changes
         }
     });
+};
+
+WNP.setWledQuickToggleState = function (enabled) {
+    if (!WNP.r.btnWledQuickToggle) {
+        return;
+    }
+    var isEnabled = Boolean(enabled);
+    WNP.r.btnWledQuickToggle.classList.toggle("is-on", isEnabled);
+    WNP.r.btnWledQuickToggle.setAttribute("aria-pressed", isEnabled ? "true" : "false");
+    WNP.r.btnWledQuickToggle.title = isEnabled ? "Disable WLED integration" : "Enable WLED integration";
+    var iconEl = WNP.r.btnWledQuickToggle.querySelector("i");
+    if (iconEl) {
+        iconEl.classList.toggle("bi-lightbulb-fill", isEnabled);
+        iconEl.classList.toggle("bi-lightbulb", !isEnabled);
+    }
 };
 
 WNP.setUIListeners = function () {
@@ -413,22 +428,22 @@ WNP.setUIListeners = function () {
 
     if (this.r.chkWledEnabled) {
         this.r.chkWledEnabled.addEventListener("change", function () {
-            if (WNP.r.chkWledQuickToggle) {
-                WNP.r.chkWledQuickToggle.checked = this.checked;
-            }
+            WNP.setWledQuickToggleState(this.checked);
             WNP.emitWledSettingsUpdate({
                 enabled: this.checked
             });
         });
     }
 
-    if (this.r.chkWledQuickToggle) {
-        this.r.chkWledQuickToggle.addEventListener("change", function () {
+    if (this.r.btnWledQuickToggle) {
+        this.r.btnWledQuickToggle.addEventListener("click", function () {
+            var nextEnabled = !this.classList.contains("is-on");
             if (WNP.r.chkWledEnabled) {
-                WNP.r.chkWledEnabled.checked = this.checked;
+                WNP.r.chkWledEnabled.checked = nextEnabled;
             }
+            WNP.setWledQuickToggleState(nextEnabled);
             WNP.emitWledSettingsUpdate({
-                enabled: this.checked
+                enabled: nextEnabled
             });
         });
     }
@@ -756,9 +771,7 @@ WNP.setSocketDefinitions = function () {
         if (WNP.r.chkWledEnabled) {
             WNP.r.chkWledEnabled.checked = wledEnabled;
         }
-        if (WNP.r.chkWledQuickToggle) {
-            WNP.r.chkWledQuickToggle.checked = wledEnabled;
-        }
+        WNP.setWledQuickToggleState(wledEnabled);
         if (WNP.r.wledHost) {
             WNP.r.wledHost.value = wledSettings.host || "";
         }

@@ -534,6 +534,22 @@
                     color: #ffe28a;
                 }
             }
+
+            .wled-quick-toggle {
+                color: #8f9997;
+                transition: color .2s ease, text-shadow .2s ease, transform .2s ease;
+
+                &:hover,
+                &:focus-visible {
+                    color: #cdd6d3;
+                }
+
+                &.is-on {
+                    color: #ffe28a;
+                    text-shadow: 0 0 6px rgba(255, 226, 138, 0.9), 0 0 14px rgba(255, 226, 138, 0.65);
+                    transform: translateY(-1px);
+                }
+            }
         }
 
     }
