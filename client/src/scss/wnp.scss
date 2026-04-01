@@ -531,7 +531,7 @@
 
                 &.is-active {
                     min-width: 54px;
-                    color: #ffe28a;
+                    color: #fff;
                 }
             }
 
@@ -545,8 +545,8 @@
                 }
 
                 &.is-on {
-                    color: #ffe28a;
-                    text-shadow: 0 0 6px rgba(255, 226, 138, 0.9), 0 0 14px rgba(255, 226, 138, 0.65);
+                    color: #fff;
+                    text-shadow: 0 0 6px rgba(255, 255, 255, 0.9), 0 0 14px rgba(255, 255, 255, 0.65);
                     transform: translateY(-1px);
                 }
             }
@@ -841,7 +841,7 @@
         font-size: 1.05rem;
         font-weight: 600;
         line-height: 1;
-        color: #ffe28a;
+        color: #fff;
         background: rgba(8, 12, 18, .64);
         box-shadow: 0 2px 8px rgba(0, 0, 0, .35);
         backdrop-filter: blur(5px);
