@@ -11,7 +11,7 @@ WNP.s = {
     locPort: (location.port && location.port != "80" && location.port != "1234") ? location.port : "80",
     rndAlbumArtUri: "./img/fake-album-1.jpg",
     // Device selection
-    aDeviceUI: ["wnpApp", "btnPrev", "btnPlay", "btnNext", "btnRefresh", "selDeviceChoices", "devName", "devNameHolder", "mediaTitle", "mediaSubTitle", "mediaArtist", "mediaAlbum", "mediaBitRate", "mediaBitDepth", "mediaSampleRate", "mediaQualityIdent", "devVol", "btnRepeat", "btnShuffle", "progressPlayed", "progressLeft", "progressPercent", "mediaSource", "albumArt", "bgAlbumArtBlur", "btnDevSelect", "oDeviceList", "btnDevPreset", "oPresetList", "btnDevVolume", "rVolume", "lyricsContainer", "lyricsPrev", "lyricsCurrent", "lyricsNext", "btnLyricsLockTrack", "btnLyricsLockAlbum", "btnLyricsSwitchAlternative", "lyricsUnlockActions", "btnLyricsUnlockTrackQuick", "btnLyricsUnlockAlbumQuick", "mediaTitleArtist", "mediaTitleCompact", "mediaArtistCompact", "mediaAlbumQuality", "mediaAlbumCompact", "mediaQualityCompact", "mediaSourceCompact", "mediaSourceFooter"],
+    aDeviceUI: ["wnpApp", "btnPrev", "btnPlay", "btnNext", "btnRefresh", "selDeviceChoices", "devName", "devNameHolder", "mediaTitle", "mediaSubTitle", "mediaArtist", "mediaAlbum", "mediaBitRate", "mediaBitDepth", "mediaSampleRate", "mediaQualityIdent", "devVol", "btnRepeat", "btnShuffle", "progressPlayed", "progressLeft", "progressPercent", "mediaSource", "albumArt", "bgAlbumArtBlur", "btnDevSelect", "oDeviceList", "btnDevPreset", "oPresetList", "btnDevVolume", "rVolume", "lyricsContainer", "lyricsPrev", "lyricsCurrent", "lyricsNext", "btnLyricsLockTrack", "btnLyricsLockAlbum", "btnLyricsSwitchAlternative", "lyricsUnlockActions", "btnLyricsUnlockTrackQuick", "btnLyricsUnlockAlbumQuick", "mediaTitleArtist", "mediaTitleCompact", "mediaArtistCompact", "mediaAlbumQuality", "mediaAlbumCompact", "mediaQualityCompact", "mediaSourceCompact", "mediaSourceFooter", "btnSleepTimer", "sleepTimerModal", "sleepTimerMinutes", "btnSleepTimerApplyCustom"],
     // Server actions to be used in the app
     aServerUI: [
         "btnReboot",
@@ -72,7 +72,13 @@ WNP.d = {
     pendingTrackCoverSource: null,
     currentTrackCoverSource: null,
     currentTrackFailedCoverUri: null,
-    lyricsControlState: null
+    lyricsControlState: null,
+    sleepTimerState: {
+        active: false,
+        mode: null,
+        targetTimeStamp: null,
+        durationMinutes: null
+    }
 };
 
 // Reference placeholders.
@@ -104,6 +110,7 @@ WNP.Init = function () {
     setTimeout(() => {
         // Get server settings
         socket.emit("server-settings");
+        socket.emit("sleep-timer-status");
         // Get devices
         socket.emit("devices-get");
     }, 500);
@@ -113,6 +120,10 @@ WNP.Init = function () {
     var rndAlbumInterval = setInterval(function () {
         WNP.s.rndAlbumArtUri = WNP.rndAlbumArt("fake-album-");
     }, 3 * 60 * 1000);
+
+    setInterval(() => {
+        WNP.updateSleepTimerButton();
+    }, 1000);
 
 };
 
@@ -555,6 +566,56 @@ WNP.setUIListeners = function () {
         });
     }
 
+    if (this.r.btnSleepTimer) {
+        const cancelSleepTimerFromButton = function (evt) {
+            const isActive = Boolean(
+                (WNP.d.sleepTimerState && WNP.d.sleepTimerState.active)
+                || WNP.r.btnSleepTimer.classList.contains("is-active")
+            );
+            if (!isActive) {
+                return;
+            }
+            evt.preventDefault();
+            evt.stopPropagation();
+            socket.emit("sleep-timer-cancel");
+            WNP.setSleepTimerState({
+                active: false,
+                mode: null,
+                targetTimeStamp: null,
+                durationMinutes: null
+            });
+        };
+        this.r.btnSleepTimer.addEventListener("pointerdown", cancelSleepTimerFromButton);
+        this.r.btnSleepTimer.addEventListener("click", cancelSleepTimerFromButton);
+    }
+
+    document.querySelectorAll(".btnSleepTimerPreset").forEach((btn) => {
+        btn.addEventListener("click", function () {
+            var minutes = parseInt(this.getAttribute("data-minutes"), 10);
+            if (!isNaN(minutes) && minutes > 0) {
+                socket.emit("sleep-timer-set", { mode: "minutes", minutes: minutes });
+                WNP.hideSleepTimerModal();
+            }
+        });
+    });
+
+    document.querySelectorAll(".btnSleepTimerSongEnd").forEach((btn) => {
+        btn.addEventListener("click", function () {
+            socket.emit("sleep-timer-set", { mode: "song-end" });
+            WNP.hideSleepTimerModal();
+        });
+    });
+
+    if (this.r.btnSleepTimerApplyCustom && this.r.sleepTimerMinutes) {
+        this.r.btnSleepTimerApplyCustom.addEventListener("click", function () {
+            var minutes = parseInt(WNP.r.sleepTimerMinutes.value, 10);
+            if (!isNaN(minutes) && minutes > 0) {
+                socket.emit("sleep-timer-set", { mode: "minutes", minutes: minutes });
+                WNP.hideSleepTimerModal();
+            }
+        });
+    }
+
 };
 
 /**
@@ -744,6 +805,10 @@ WNP.setSocketDefinitions = function () {
             WNP.r.kioskDelaySec.value = kioskDelaySec;
         }
 
+    });
+
+    socket.on("sleep-timer-state", function (msg) {
+        WNP.setSleepTimerState(msg);
     });
 
     // On devices get
@@ -1326,6 +1391,76 @@ WNP.setSocketDefinitions = function () {
         console.log("WNP", "Server shutdown:", msg);
     });
 
+};
+
+WNP.hideSleepTimerModal = function () {
+    if (!WNP.r.sleepTimerModal || !window.bootstrap || !bootstrap.Modal) {
+        return;
+    }
+    var modalInstance = bootstrap.Modal.getInstance(WNP.r.sleepTimerModal);
+    if (modalInstance) {
+        modalInstance.hide();
+    }
+};
+
+WNP.setSleepTimerState = function (state) {
+    if (state && typeof state === "object") {
+        WNP.d.sleepTimerState = state;
+    } else {
+        WNP.d.sleepTimerState = {
+            active: false,
+            mode: null,
+            targetTimeStamp: null,
+            durationMinutes: null
+        };
+    }
+    WNP.updateSleepTimerButton();
+};
+
+WNP.getSleepTimerRemainingMs = function () {
+    if (!WNP.d.sleepTimerState || !WNP.d.sleepTimerState.active) {
+        return 0;
+    }
+    if (WNP.d.sleepTimerState.mode === "song-end") {
+        return null;
+    }
+    var targetTimeStamp = Number(WNP.d.sleepTimerState.targetTimeStamp || 0);
+    if (!targetTimeStamp) {
+        return 0;
+    }
+    return Math.max(0, targetTimeStamp - Date.now());
+};
+
+WNP.formatRemainingTimer = function (remainingMs) {
+    if (remainingMs === null) {
+        return "Song";
+    }
+    var totalSeconds = Math.ceil(remainingMs / 1000);
+    var minutes = Math.floor(totalSeconds / 60);
+    var seconds = totalSeconds % 60;
+    return String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0");
+};
+
+WNP.updateSleepTimerButton = function () {
+    if (!WNP.r.btnSleepTimer) {
+        return;
+    }
+    if (!WNP.d.sleepTimerState || !WNP.d.sleepTimerState.active) {
+        WNP.r.btnSleepTimer.setAttribute("data-bs-toggle", "modal");
+        WNP.r.btnSleepTimer.setAttribute("data-bs-target", "#sleepTimerModal");
+        WNP.r.btnSleepTimer.innerHTML = "<i class=\"bi bi-clock\"></i>";
+        WNP.r.btnSleepTimer.title = "Set sleep timer";
+        WNP.r.btnSleepTimer.classList.remove("is-active");
+        return;
+    }
+
+    WNP.r.btnSleepTimer.removeAttribute("data-bs-toggle");
+    WNP.r.btnSleepTimer.removeAttribute("data-bs-target");
+    var remainingMs = WNP.getSleepTimerRemainingMs();
+    var remainingLabel = WNP.formatRemainingTimer(remainingMs);
+    WNP.r.btnSleepTimer.innerHTML = "<i class=\"bi bi-clock-history\"></i> <span>" + remainingLabel + "</span>";
+    WNP.r.btnSleepTimer.title = "Sleep timer active. Click to abort the timer.";
+    WNP.r.btnSleepTimer.classList.add("is-active");
 };
 
 // =======================================================

@@ -131,6 +131,16 @@ let serverSettings = { // Placeholder for current server settings
 // Interval placeholders:
 let pollState = null; // For the renderer state
 let pollMetadata = null; // For the renderer metadata
+let sleepTimerCheckInterval = null;
+let sleepTimer = {
+    active: false,
+    mode: null,
+    durationMinutes: null,
+    targetTimeStamp: null,
+    createdAt: null,
+    trackSignature: null,
+    timeoutHandle: null
+};
 
 const POLL_INTERVAL_ACTIVE_MS = 1000;
 const POLL_INTERVAL_IDLE_MS = 4 * 1000;
@@ -183,6 +193,129 @@ const syncPolling = () => {
     }
 };
 
+const getCurrentTrackSignature = () => {
+    if (!deviceInfo || !deviceInfo.metadata) {
+        return null;
+    }
+    if (deviceInfo.metadata.lyricsTrackKey) {
+        return deviceInfo.metadata.lyricsTrackKey;
+    }
+    const track = deviceInfo.metadata.trackMetaData || {};
+    return [
+        track["dc:title"] || "",
+        track["upnp:artist"] || "",
+        track["upnp:album"] || "",
+        deviceInfo.metadata.TrackDuration || ""
+    ].join("::");
+};
+
+const getSleepTimerState = () => {
+    const remainingMs = sleepTimer.active && sleepTimer.mode === "minutes" && sleepTimer.targetTimeStamp
+        ? Math.max(0, sleepTimer.targetTimeStamp - Date.now())
+        : null;
+    return {
+        active: sleepTimer.active,
+        mode: sleepTimer.mode,
+        durationMinutes: sleepTimer.durationMinutes,
+        targetTimeStamp: sleepTimer.targetTimeStamp,
+        createdAt: sleepTimer.createdAt,
+        remainingMs: remainingMs
+    };
+};
+
+const emitSleepTimerState = () => {
+    io.emit("sleep-timer-state", getSleepTimerState());
+};
+
+const clearSleepTimerInternal = () => {
+    if (sleepTimer.timeoutHandle) {
+        clearTimeout(sleepTimer.timeoutHandle);
+    }
+    sleepTimer = {
+        active: false,
+        mode: null,
+        durationMinutes: null,
+        targetTimeStamp: null,
+        createdAt: null,
+        trackSignature: null,
+        timeoutHandle: null
+    };
+};
+
+const stopPlaybackForSleepTimer = () => {
+    const supportedActions = Array.isArray(serverSettings.selectedDevice.actions) ? serverSettings.selectedDevice.actions : [];
+    if (supportedActions.includes("Stop")) {
+        upnp.callDeviceAction(io, "Stop", deviceInfo, serverSettings);
+        return "Stop";
+    }
+    if (supportedActions.includes("Pause")) {
+        upnp.callDeviceAction(io, "Pause", deviceInfo, serverSettings);
+        return "Pause";
+    }
+    upnp.callDeviceAction(io, "Stop", deviceInfo, serverSettings);
+    return "Stop";
+};
+
+const triggerSleepTimer = (reason) => {
+    if (!sleepTimer.active) {
+        return;
+    }
+    clearSleepTimerInternal();
+    emitSleepTimerState();
+    if (serverSettings.selectedDevice && serverSettings.selectedDevice.location) {
+        const action = stopPlaybackForSleepTimer();
+        log("Sleep timer triggered", reason, action);
+    }
+};
+
+const cancelSleepTimer = () => {
+    clearSleepTimerInternal();
+    emitSleepTimerState();
+};
+
+const startMinutesSleepTimer = (minutes) => {
+    const durationMinutes = Math.max(1, Math.round(minutes));
+    clearSleepTimerInternal();
+    sleepTimer.active = true;
+    sleepTimer.mode = "minutes";
+    sleepTimer.durationMinutes = durationMinutes;
+    sleepTimer.createdAt = Date.now();
+    sleepTimer.targetTimeStamp = sleepTimer.createdAt + (durationMinutes * 60 * 1000);
+    sleepTimer.timeoutHandle = setTimeout(() => {
+        triggerSleepTimer("time-elapsed");
+    }, durationMinutes * 60 * 1000);
+    emitSleepTimerState();
+    return getSleepTimerState();
+};
+
+const startSongEndSleepTimer = () => {
+    clearSleepTimerInternal();
+    sleepTimer.active = true;
+    sleepTimer.mode = "song-end";
+    sleepTimer.createdAt = Date.now();
+    sleepTimer.trackSignature = getCurrentTrackSignature();
+    emitSleepTimerState();
+    return getSleepTimerState();
+};
+
+const ensureSleepTimerWatcher = () => {
+    if (sleepTimerCheckInterval) {
+        return;
+    }
+    sleepTimerCheckInterval = setInterval(() => {
+        if (!sleepTimer.active || sleepTimer.mode !== "song-end") {
+            return;
+        }
+        const currentSignature = getCurrentTrackSignature();
+        if (!currentSignature || !sleepTimer.trackSignature) {
+            return;
+        }
+        if (currentSignature !== sleepTimer.trackSignature) {
+            triggerSleepTimer("track-changed");
+        }
+    }, 1000);
+};
+
 // ===========================================================================
 // Get the server settings from local file storage, if any.
 lib.getSettings(serverSettings);
@@ -191,6 +324,7 @@ coverArt.applySettings(serverSettings);
 kiosk.applySettings(serverSettings);
 wled.applySettings(serverSettings, deviceInfo && deviceInfo.state ? deviceInfo.state.CurrentTransportState : null);
 syncPolling();
+ensureSleepTimerWatcher();
 
 // ===========================================================================
 // Initial SSDP scan for devices.
@@ -435,6 +569,51 @@ app.get("/api/remote/preset/:id", limiter, function (req, res) {
     executeDeviceApiCommand(`MCUKeyShortClick:${presetId}`, res, { presetId });
 });
 
+app.get("/api/remote/sleep-timer", limiter, function (req, res) {
+    const mode = typeof req.query.mode === "string" ? req.query.mode : "minutes";
+    if (mode === "song-end") {
+        const state = startSongEndSleepTimer();
+        res.json({
+            ok: true,
+            type: "sleep-timer",
+            ...state
+        });
+        return;
+    }
+    const minutes = Number.parseInt(req.query.minutes, 10);
+    if (!Number.isInteger(minutes) || minutes <= 0) {
+        res.status(400).json({
+            ok: false,
+            reason: "invalid-minutes",
+            details: "minutes must be an integer > 0"
+        });
+        return;
+    }
+    const state = startMinutesSleepTimer(minutes);
+    res.json({
+        ok: true,
+        type: "sleep-timer",
+        ...state
+    });
+});
+
+app.get("/api/remote/sleep-timer/status", limiter, function (req, res) {
+    res.json({
+        ok: true,
+        type: "sleep-timer",
+        ...getSleepTimerState()
+    });
+});
+
+app.delete("/api/remote/sleep-timer", limiter, function (req, res) {
+    cancelSleepTimer();
+    res.json({
+        ok: true,
+        type: "sleep-timer",
+        ...getSleepTimerState()
+    });
+});
+
 app.post("/api/lyrics-control", limiter, express.json(), async function (req, res) {
     const action = req.body && typeof req.body.action === "string" ? req.body.action : "";
     try {
@@ -542,6 +721,7 @@ io.on("connection", (socket) => {
     // would wait for the next polling cycle before seeing metadata/lyrics.
     socket.emit("state", deviceInfo.state);
     socket.emit("metadata", withNormalizedLyricsTrackKey(deviceInfo.metadata));
+    socket.emit("sleep-timer-state", getSleepTimerState());
     if (deviceInfo.lyrics) {
         socket.emit("lyrics", deviceInfo.lyrics);
     }
@@ -589,6 +769,7 @@ io.on("connection", (socket) => {
      */
     socket.on("device-set", (msg) => {
         log("Socket event", "device-set", msg);
+        cancelSleepTimer();
         sockets.setDevice(io, deviceList, deviceInfo, serverSettings, msg);
         // Immediately get new metadata and state from new device
         upnp.updateDeviceMetadata(io, deviceInfo, serverSettings);
@@ -613,6 +794,31 @@ io.on("connection", (socket) => {
     socket.on("device-api", (msg) => {
         log("Socket event", "device-api", msg);
         httpApi.callApi(io, msg, serverSettings);
+    });
+
+    socket.on("sleep-timer-set", (msg) => {
+        const mode = msg && typeof msg.mode === "string" ? msg.mode : "minutes";
+        if (mode === "song-end") {
+            startSongEndSleepTimer();
+            return;
+        }
+        const minutes = msg ? Number.parseInt(msg.minutes, 10) : NaN;
+        if (!Number.isInteger(minutes) || minutes <= 0) {
+            socket.emit("sleep-timer-state", {
+                ...getSleepTimerState(),
+                error: "invalid-minutes"
+            });
+            return;
+        }
+        startMinutesSleepTimer(minutes);
+    });
+
+    socket.on("sleep-timer-cancel", () => {
+        cancelSleepTimer();
+    });
+
+    socket.on("sleep-timer-status", () => {
+        socket.emit("sleep-timer-state", getSleepTimerState());
     });
 
     // ======================================

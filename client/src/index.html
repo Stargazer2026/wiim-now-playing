@@ -143,6 +143,10 @@
                         </div>
                         <!-- Top right menu options -->
                         <div class="btn-group secondary">
+                            <button id="btnSleepTimer" type="button" class="btn btn-outline-light" data-bs-toggle="modal"
+                                data-bs-target="#sleepTimerModal" title="Set sleep timer">
+                                <i class="bi bi-clock"></i>
+                            </button>
                             <!-- TV button -->
                             <a id="wnpTVMode" type="button" class="btn btn-outline-light" href="/tv">
                                 <i class="bi bi-tv"></i>
@@ -162,6 +166,33 @@
                 </div>
             </div>
 
+        </div>
+
+        <div class="modal fade" id="sleepTimerModal" tabindex="-1" aria-labelledby="sleepTimerModalLabel" aria-hidden="true"
+            data-bs-theme="dark">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="sleepTimerModalLabel">Sleep Timer</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3 d-flex flex-wrap gap-2">
+                            <button type="button" class="btn btn-outline-light btnSleepTimerPreset" data-minutes="5">5 min</button>
+                            <button type="button" class="btn btn-outline-light btnSleepTimerPreset" data-minutes="15">15 min</button>
+                            <button type="button" class="btn btn-outline-light btnSleepTimerPreset" data-minutes="30">30 min</button>
+                            <button type="button" class="btn btn-outline-light btnSleepTimerSongEnd">Song end</button>
+                        </div>
+                        <div>
+                            <label class="form-label" for="sleepTimerMinutes">Custom duration (minutes)</label>
+                            <div class="input-group">
+                                <input id="sleepTimerMinutes" class="form-control" type="number" min="1" step="1" placeholder="e.g. 20">
+                                <button id="btnSleepTimerApplyCustom" type="button" class="btn btn-primary">Start</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Settings modal -->

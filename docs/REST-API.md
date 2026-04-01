@@ -19,6 +19,10 @@ By default, the server runs on port `80`:
 | Volume Up (relative) | `GET` | `/api/remote/volume-up?delta=:n` | Increases the volume relatively by `:n` (default: `5`, if `delta` is missing). |
 | Volume Down (relative) | `GET` | `/api/remote/volume-down?delta=:n` | Decreases the volume relatively by `:n` (default: `5`, if `delta` is missing). |
 | Start Preset/Playlist #n | `GET` | `/api/remote/preset/:id` | Starts preset/playlist with numeric ID `:id` (e.g., `3`). |
+| Sleep Timer (minutes) | `GET` | `/api/remote/sleep-timer?minutes=:n` | Starts or replaces sleep timer with `:n` minutes. |
+| Sleep Timer (song end) | `GET` | `/api/remote/sleep-timer?mode=song-end` | Stops playback at next track change (song end). |
+| Sleep Timer status | `GET` | `/api/remote/sleep-timer/status` | Returns current sleep timer state. |
+| Sleep Timer cancel | `DELETE` | `/api/remote/sleep-timer` | Cancels running sleep timer. |
 
 ## Responses (JSON)
 
@@ -39,6 +43,7 @@ Typical errors:
 - `409 no-device-selected`: No target device is selected.
 - `409 action-not-supported`: The selected device does not support the requested action.
 - `409 volume-unavailable`: Current volume is not yet available (e.g., immediately after startup/device change).
+- `400 invalid-minutes`: `minutes` is not valid (must be a whole number `> 0`).
 
 ## Example Commands with cURL
 
@@ -85,4 +90,28 @@ curl -X GET "http://localhost/api/remote/volume-down?delta=10"
 ```bash
 PRESET_ID=5
 curl -X GET "http://localhost/api/remote/preset/${PRESET_ID}"
+```
+
+### 8) Start Sleep Timer for 15 Minutes
+
+```bash
+curl -X GET "http://localhost/api/remote/sleep-timer?minutes=15"
+```
+
+### 9) Start Sleep Timer at Song End (Track Switch)
+
+```bash
+curl -X GET "http://localhost/api/remote/sleep-timer?mode=song-end"
+```
+
+### 10) Check Sleep Timer Status
+
+```bash
+curl -X GET "http://localhost/api/remote/sleep-timer/status"
+```
+
+### 11) Cancel Sleep Timer
+
+```bash
+curl -X DELETE "http://localhost/api/remote/sleep-timer"
 ```

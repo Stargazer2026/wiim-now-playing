@@ -518,6 +518,22 @@
             .btn {
                 border: none;
             }
+
+            #btnSleepTimer {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                min-width: 54px;
+
+                span {
+                    font-size: 0.8rem;
+                    font-variant-numeric: tabular-nums;
+                }
+
+                &.is-active {
+                    color: #ffe28a;
+                }
+            }
         }
 
     }
