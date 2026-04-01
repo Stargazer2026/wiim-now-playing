@@ -11,7 +11,7 @@ WNP.s = {
     locPort: (location.port && location.port != "80" && location.port != "1234") ? location.port : "80",
     rndAlbumArtUri: "./img/fake-album-1.jpg",
     // Device selection
-    aDeviceUI: ["wnpApp", "btnPrev", "btnPlay", "btnNext", "btnRefresh", "selDeviceChoices", "devName", "devNameHolder", "mediaTitle", "mediaSubTitle", "mediaArtist", "mediaAlbum", "mediaBitRate", "mediaBitDepth", "mediaSampleRate", "mediaQualityIdent", "devVol", "btnRepeat", "btnShuffle", "progressPlayed", "progressLeft", "progressPercent", "mediaSource", "albumArt", "bgAlbumArtBlur", "btnDevSelect", "oDeviceList", "btnDevPreset", "oPresetList", "btnDevVolume", "rVolume", "lyricsContainer", "lyricsPrev", "lyricsCurrent", "lyricsNext", "btnLyricsLockTrack", "btnLyricsLockAlbum", "btnLyricsSwitchAlternative", "lyricsUnlockActions", "btnLyricsUnlockTrackQuick", "btnLyricsUnlockAlbumQuick", "mediaTitleArtist", "mediaTitleCompact", "mediaArtistCompact", "mediaAlbumQuality", "mediaAlbumCompact", "mediaQualityCompact", "mediaSourceCompact", "mediaSourceFooter", "btnSleepTimer", "sleepTimerModal", "sleepTimerMinutes", "btnSleepTimerApplyCustom"],
+    aDeviceUI: ["wnpApp", "btnPrev", "btnPlay", "btnNext", "btnRefresh", "selDeviceChoices", "devName", "devNameHolder", "mediaTitle", "mediaSubTitle", "mediaArtist", "mediaAlbum", "mediaBitRate", "mediaBitDepth", "mediaSampleRate", "mediaQualityIdent", "devVol", "btnRepeat", "btnShuffle", "progressPlayed", "progressLeft", "progressPercent", "mediaSource", "albumArt", "bgAlbumArtBlur", "btnDevSelect", "oDeviceList", "btnDevPreset", "oPresetList", "btnDevVolume", "rVolume", "lyricsContainer", "lyricsPrev", "lyricsCurrent", "lyricsNext", "btnLyricsLockTrack", "btnLyricsLockAlbum", "btnLyricsSwitchAlternative", "lyricsUnlockActions", "btnLyricsUnlockTrackQuick", "btnLyricsUnlockAlbumQuick", "mediaTitleArtist", "mediaTitleCompact", "mediaArtistCompact", "mediaAlbumQuality", "mediaAlbumCompact", "mediaQualityCompact", "mediaSourceCompact", "mediaSourceFooter", "btnSleepTimer", "sleepTimerModal", "sleepTimerMinutes", "btnSleepTimerApplyCustom", "sleepTimerOverlay"],
     // Server actions to be used in the app
     aServerUI: [
         "btnReboot",
@@ -1456,6 +1456,7 @@ WNP.formatRemainingTimer = function (remainingMs) {
 
 WNP.updateSleepTimerButton = function () {
     if (!WNP.r.btnSleepTimer) {
+        WNP.updateSleepTimerOverlay();
         return;
     }
     if (!WNP.d.sleepTimerState || !WNP.d.sleepTimerState.active) {
@@ -1464,6 +1465,7 @@ WNP.updateSleepTimerButton = function () {
         WNP.r.btnSleepTimer.innerHTML = "<i class=\"bi bi-clock\"></i>";
         WNP.r.btnSleepTimer.title = "Set sleep timer";
         WNP.r.btnSleepTimer.classList.remove("is-active");
+        WNP.updateSleepTimerOverlay();
         return;
     }
 
@@ -1474,6 +1476,25 @@ WNP.updateSleepTimerButton = function () {
     WNP.r.btnSleepTimer.innerHTML = "<i class=\"bi bi-clock-history\"></i> <span>" + remainingLabel + "</span>";
     WNP.r.btnSleepTimer.title = "Sleep timer active. Click to abort the timer.";
     WNP.r.btnSleepTimer.classList.add("is-active");
+    WNP.updateSleepTimerOverlay();
+};
+
+WNP.updateSleepTimerOverlay = function () {
+    if (!WNP.r.sleepTimerOverlay) {
+        return;
+    }
+    if (!WNP.d.sleepTimerState || !WNP.d.sleepTimerState.active) {
+        WNP.r.sleepTimerOverlay.classList.remove("is-visible");
+        WNP.r.sleepTimerOverlay.innerHTML = "";
+        return;
+    }
+    var remainingMs = WNP.getSleepTimerRemainingMs();
+    if (remainingMs === null) {
+        WNP.r.sleepTimerOverlay.innerHTML = "<i class=\"bi bi-alarm\"></i><span>Song end</span>";
+    } else {
+        WNP.r.sleepTimerOverlay.innerHTML = "<i class=\"bi bi-alarm\"></i><span>" + WNP.formatRemainingTimer(remainingMs) + "</span>";
+    }
+    WNP.r.sleepTimerOverlay.classList.add("is-visible");
 };
 
 // =======================================================

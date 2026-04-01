@@ -828,6 +828,29 @@
         }
     }
 
+    .sleep-timer-overlay {
+        position: absolute;
+        right: 18px;
+        bottom: 18px;
+        z-index: 5;
+        display: none;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        font-size: 1.05rem;
+        font-weight: 600;
+        line-height: 1;
+        color: rgba(255, 255, 255, .95);
+        background: rgba(8, 12, 18, .64);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, .35);
+        backdrop-filter: blur(5px);
+        pointer-events: none;
+    }
+
+    .sleep-timer-overlay.is-visible {
+        display: inline-flex;
+    }
 }
 
 // Resolution debugging, only used in res.html
