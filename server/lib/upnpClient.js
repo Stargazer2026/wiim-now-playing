@@ -21,6 +21,7 @@ const lyrics = require("./lyrics.js"); // Lyrics functionality
 const coverArt = require("./coverArt.js");
 const kiosk = require("./kiosk.js");
 const wled = require("./wled.js");
+const voicePreset = require("./voicePreset.js");
 const log = require("debug")("lib:upnpClient");
 
 
@@ -275,6 +276,9 @@ const updateDeviceMetadata = (io, deviceInfo, serverSettings) => {
                                             metadataTimeStamp: lib.getTimeStamp()
                                         });
                                         io.emit("metadata", deviceInfo.metadata);
+                                        voicePreset.applyPresetForMetadata(io, deviceInfo.metadata, serverSettings).catch((error) => {
+                                            log("Voice preset update error", error);
+                                        });
                                         if (serverSettings.features.coverArt.enabled && !hasUsableDeviceAlbumArt(deviceInfo.metadata)) {
                                             coverArt.resolveAlbumArt(deviceInfo.metadata, serverSettings).then((resolved) => {
                                                 if (!resolved || !deviceInfo.metadata) {
@@ -323,6 +327,9 @@ const updateDeviceMetadata = (io, deviceInfo, serverSettings) => {
                                 metadataTimeStamp: lib.getTimeStamp()
                             });
                             io.emit("metadata", deviceInfo.metadata);
+                            voicePreset.applyPresetForMetadata(io, deviceInfo.metadata, serverSettings).catch((error) => {
+                                log("Voice preset update error", error);
+                            });
                             lyrics.getLyricsForMetadata(io, deviceInfo, serverSettings).catch((error) => {
                                 log("Lyrics update error", error);
                             });
@@ -381,6 +388,9 @@ const updateDeviceMetadata = (io, deviceInfo, serverSettings) => {
                                             metadataTimeStamp: lib.getTimeStamp()
                                         });
                                         io.emit("metadata", deviceInfo.metadata);
+                                        voicePreset.applyPresetForMetadata(io, deviceInfo.metadata, serverSettings).catch((error) => {
+                                            log("Voice preset update error", error);
+                                        });
                                         if (serverSettings.features.coverArt.enabled && !hasUsableDeviceAlbumArt(deviceInfo.metadata)) {
                                             coverArt.resolveAlbumArt(deviceInfo.metadata, serverSettings).then((resolved) => {
                                                 if (!resolved || !deviceInfo.metadata) {
@@ -429,6 +439,9 @@ const updateDeviceMetadata = (io, deviceInfo, serverSettings) => {
                                 metadataTimeStamp: lib.getTimeStamp()
                             });
                             io.emit("metadata", deviceInfo.metadata);
+                            voicePreset.applyPresetForMetadata(io, deviceInfo.metadata, serverSettings).catch((error) => {
+                                log("Voice preset update error", error);
+                            });
                             lyrics.getLyricsForMetadata(io, deviceInfo, serverSettings).catch((error) => {
                                 log("Lyrics update error", error);
                             });

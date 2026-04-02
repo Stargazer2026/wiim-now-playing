@@ -36,6 +36,7 @@ const lyricsFailures = require("./lib/lyricsFailures.js");
 const coverArt = require("./lib/coverArt.js");
 const kiosk = require("./lib/kiosk.js");
 const wled = require("./lib/wled.js");
+const voicePreset = require("./lib/voicePreset.js");
 const log = require("debug")("index"); // See README.md on debugging
 
 
@@ -114,6 +115,11 @@ let serverSettings = { // Placeholder for current server settings
             "enabled": false,
             "host": "",
             "playbackPreset": 0
+        },
+        "voicePreset": {
+            "voicePresetId": 0,
+            "defaultPresetId": 0,
+            "lookupEnabled": true
         }
     },
     "kiosk": {
@@ -721,6 +727,7 @@ io.on("connection", (socket) => {
     // would wait for the next polling cycle before seeing metadata/lyrics.
     socket.emit("state", deviceInfo.state);
     socket.emit("metadata", withNormalizedLyricsTrackKey(deviceInfo.metadata));
+    socket.emit("voice-preset-status", voicePreset.getState());
     socket.emit("sleep-timer-state", getSleepTimerState());
     if (deviceInfo.lyrics) {
         socket.emit("lyrics", deviceInfo.lyrics);
@@ -771,6 +778,8 @@ io.on("connection", (socket) => {
         log("Socket event", "device-set", msg);
         cancelSleepTimer();
         sockets.setDevice(io, deviceList, deviceInfo, serverSettings, msg);
+        voicePreset.reset();
+        io.emit("voice-preset-status", voicePreset.getState());
         // Immediately get new metadata and state from new device
         upnp.updateDeviceMetadata(io, deviceInfo, serverSettings);
         upnp.updateDeviceState(io, deviceInfo, serverSettings);
@@ -922,6 +931,23 @@ io.on("connection", (socket) => {
             lib.saveSettings(serverSettings);
             sockets.getServerSettings(io, serverSettings);
             wled.applySettings(serverSettings, deviceInfo && deviceInfo.state ? deviceInfo.state.CurrentTransportState : null);
+        }
+        if (msg && msg.features && msg.features.voicePreset) {
+            if (typeof msg.features.voicePreset.voicePresetId === "number") {
+                serverSettings.features.voicePreset.voicePresetId = Math.max(0, Math.round(msg.features.voicePreset.voicePresetId));
+            }
+            if (typeof msg.features.voicePreset.defaultPresetId === "number") {
+                serverSettings.features.voicePreset.defaultPresetId = Math.max(0, Math.round(msg.features.voicePreset.defaultPresetId));
+            }
+            if (typeof msg.features.voicePreset.lookupEnabled === "boolean") {
+                serverSettings.features.voicePreset.lookupEnabled = msg.features.voicePreset.lookupEnabled;
+            }
+            lib.saveSettings(serverSettings);
+            sockets.getServerSettings(io, serverSettings);
+            voicePreset.reset();
+            voicePreset.applyPresetForMetadata(io, deviceInfo.metadata, serverSettings).catch((error) => {
+                log("Voice preset update error", error);
+            });
         }
         if (msg && msg.kiosk) {
             if (typeof msg.kiosk.host === "string") {

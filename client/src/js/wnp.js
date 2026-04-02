@@ -38,6 +38,9 @@ WNP.s = {
         "wledHost",
         "wledPreset",
         "wledToggleUrl",
+        "voicePresetId",
+        "defaultPresetId",
+        "voicePresetLookupEnabled",
         "kioskHost",
         "kioskPassword",
         "kioskDelaySec"
@@ -157,6 +160,14 @@ WNP.emitWledSettingsUpdate = function (changes) {
     socket.emit("server-settings-update", {
         features: {
             wled: changes
+        }
+    });
+};
+
+WNP.emitVoicePresetSettingsUpdate = function (changes) {
+    socket.emit("server-settings-update", {
+        features: {
+            voicePreset: changes
         }
     });
 };
@@ -464,6 +475,37 @@ WNP.setUIListeners = function () {
             }
             WNP.emitWledSettingsUpdate({
                 playbackPreset: presetValue
+            });
+        });
+    }
+
+    if (this.r.voicePresetId) {
+        this.r.voicePresetId.addEventListener("change", function () {
+            var presetValue = parseInt(this.value, 10);
+            if (isNaN(presetValue) || presetValue < 0) {
+                presetValue = 0;
+            }
+            WNP.emitVoicePresetSettingsUpdate({
+                voicePresetId: presetValue
+            });
+        });
+    }
+
+    if (this.r.defaultPresetId) {
+        this.r.defaultPresetId.addEventListener("change", function () {
+            var presetValue = parseInt(this.value, 10);
+            if (isNaN(presetValue) || presetValue < 0) {
+                presetValue = 0;
+            }
+            WNP.emitVoicePresetSettingsUpdate({
+                defaultPresetId: presetValue
+            });
+        });
+    }
+    if (this.r.voicePresetLookupEnabled) {
+        this.r.voicePresetLookupEnabled.addEventListener("change", function () {
+            WNP.emitVoicePresetSettingsUpdate({
+                lookupEnabled: this.checked
             });
         });
     }
@@ -783,6 +825,18 @@ WNP.setSocketDefinitions = function () {
             var relativeUrl = "/api/wled/toggle";
             WNP.r.wledToggleUrl.href = relativeUrl;
             WNP.r.wledToggleUrl.innerText = relativeUrl;
+        }
+        if (WNP.r.voicePresetId) {
+            var voicePresetSettings = (msg && msg.features && msg.features.voicePreset) ? msg.features.voicePreset : {};
+            WNP.r.voicePresetId.value = (typeof voicePresetSettings.voicePresetId === "number") ? voicePresetSettings.voicePresetId : 0;
+        }
+        if (WNP.r.defaultPresetId) {
+            var defaultSettings = (msg && msg.features && msg.features.voicePreset) ? msg.features.voicePreset : {};
+            WNP.r.defaultPresetId.value = (typeof defaultSettings.defaultPresetId === "number") ? defaultSettings.defaultPresetId : 0;
+        }
+        if (WNP.r.voicePresetLookupEnabled) {
+            var lookupSettings = (msg && msg.features && msg.features.voicePreset) ? msg.features.voicePreset : {};
+            WNP.r.voicePresetLookupEnabled.checked = lookupSettings.lookupEnabled !== false;
         }
 
         if (WNP.r.chkLyricsEnabled && !WNP.d.lyricsCookieApplied) {

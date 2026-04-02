@@ -18,7 +18,7 @@ WNP.s = {
     // Ticks to be used in the app (debug)
     aTicksUI: ["tickDevicesGetUp", "tickDevicesRefreshUp", "tickServerSettingsUp", "tickStateUp", "tickStateDown", "tickMetadataUp", "tickMetadataDown", "tickLyricsUp", "tickLyricsDown", "tickDeviceSetUp", "tickDeviceSetDown", "tickServerSettingsDown", "tickDevicesGetDown", "tickDevicesRefreshDown", "tickVolumeGetUp", "tickVolumeGetDown", "tickVolumeSetUp", "tickVolumeSetDown", "tickPresetsListUp", "tickPresetsListDown"],
     // Debug UI elements
-    aDebugUI: ["state", "metadata", "lyrics", "lyricsStatus", "lyricsProvider", "lyricsTrackKey", "lyricsCacheEnabled", "lyricsCacheStatus", "lyricsCacheSize", "lyricsCacheMax", "lyricsCachePrefetchMode", "lyricsCachePrefetchConcurrency", "lyricsPrefetch", "lyricsPrefetchStatus", "lyricsPrefetchTrackKey", "lyricsPrefetchMode", "lyricsPrefetchReason", "sPresetsList", "sServerSettings", "sManufacturer", "sModelName", "sLocation", "sTimeStampDiff", "sAlbumArtUri", "sAlbumArtUriRaw", "sAlbumArtUriStatus", "oPresetsGroup", "btnDevices", "btnGetVolume", "btnSetVolume", "mediaLoopMode", "sTransportState", "sPlayMedium", "sPlayerProgress"]
+    aDebugUI: ["state", "metadata", "lyrics", "lyricsStatus", "lyricsProvider", "lyricsTrackKey", "lyricsCacheEnabled", "lyricsCacheStatus", "lyricsCacheSize", "lyricsCacheMax", "lyricsCachePrefetchMode", "lyricsCachePrefetchConcurrency", "lyricsPrefetch", "lyricsPrefetchStatus", "lyricsPrefetchTrackKey", "lyricsPrefetchMode", "lyricsPrefetchReason", "voicePresetStatus", "voicePresetDetectionResult", "voicePresetDetectionSource", "voicePresetLastMode", "voicePresetLastPreset", "voicePresetOnlineResult", "voicePresetOnlineSource", "voicePresetOnlineProviders", "sPresetsList", "sServerSettings", "sManufacturer", "sModelName", "sLocation", "sTimeStampDiff", "sAlbumArtUri", "sAlbumArtUriRaw", "sAlbumArtUriStatus", "oPresetsGroup", "btnDevices", "btnGetVolume", "btnSetVolume", "mediaLoopMode", "sTransportState", "sPlayMedium", "sPlayerProgress"]
 };
 
 // Data placeholders.
@@ -540,6 +540,47 @@ WNP.setSocketDefinitions = function () {
         }
         if (WNP.r.lyricsPrefetchReason) {
             WNP.r.lyricsPrefetchReason.innerText = (msg && msg.reason) ? msg.reason : "-";
+        }
+    });
+
+    socket.on("voice-preset-status", function (msg) {
+        console.log("IO: voice-preset-status", msg);
+        if (WNP.r.voicePresetStatus) {
+            WNP.r.voicePresetStatus.innerHTML = JSON.stringify(msg);
+        }
+        if (WNP.r.voicePresetDetectionResult) {
+            var detectionValue = (msg && msg.lastDetection && typeof msg.lastDetection.spokenWord === "boolean")
+                ? (msg.lastDetection.spokenWord ? "spoken-word" : "non-spoken")
+                : "-";
+            WNP.r.voicePresetDetectionResult.innerText = detectionValue;
+        }
+        if (WNP.r.voicePresetDetectionSource) {
+            WNP.r.voicePresetDetectionSource.innerText = (msg && msg.lastDetection && msg.lastDetection.source)
+                ? msg.lastDetection.source
+                : "-";
+        }
+        if (WNP.r.voicePresetLastMode) {
+            WNP.r.voicePresetLastMode.innerText = (msg && msg.lastAppliedMode) ? msg.lastAppliedMode : "-";
+        }
+        if (WNP.r.voicePresetLastPreset) {
+            WNP.r.voicePresetLastPreset.innerText = (msg && msg.lastAppliedPresetId) ? msg.lastAppliedPresetId : "-";
+        }
+        if (WNP.r.voicePresetOnlineResult) {
+            var onlineResult = (msg && msg.lastLookup && typeof msg.lastLookup.spokenWord === "boolean")
+                ? (msg.lastLookup.spokenWord ? "spoken-word" : "non-spoken")
+                : ((msg && msg.lastLookup && msg.lastLookup.reason) ? msg.lastLookup.reason : "-");
+            WNP.r.voicePresetOnlineResult.innerText = onlineResult;
+        }
+        if (WNP.r.voicePresetOnlineSource) {
+            WNP.r.voicePresetOnlineSource.innerText = (msg && msg.lastLookup && msg.lastLookup.source)
+                ? msg.lastLookup.source
+                : "-";
+        }
+        if (WNP.r.voicePresetOnlineProviders) {
+            var providers = (msg && msg.lastLookup && Array.isArray(msg.lastLookup.providers))
+                ? msg.lastLookup.providers.join(", ")
+                : "-";
+            WNP.r.voicePresetOnlineProviders.innerText = providers;
         }
     });
 

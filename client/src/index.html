@@ -409,6 +409,24 @@
                                         Toggle URL: <a id="wledToggleUrl" href="/api/wled/toggle">/api/wled/toggle</a>
                                     </div>
                                 </div>
+                                <div class="border rounded p-3 mb-3">
+                                    <h6 class="mb-3">Spoken-word preset switch (PoC)</h6>
+                                    <div class="mt-2">
+                                        <label class="form-label" for="voicePresetId">Voice preset ID</label>
+                                        <input class="form-control" type="number" id="voicePresetId" min="0" step="1">
+                                    </div>
+                                    <div class="mt-2">
+                                        <label class="form-label" for="defaultPresetId">Default preset ID</label>
+                                        <input class="form-control" type="number" id="defaultPresetId" min="0" step="1">
+                                    </div>
+                                    <div class="form-check form-switch mt-3">
+                                        <input class="form-check-input" type="checkbox" id="voicePresetLookupEnabled">
+                                        <label class="form-check-label" for="voicePresetLookupEnabled">Use online metadata lookup (iTunes/OpenLibrary/MusicBrainz)</label>
+                                    </div>
+                                    <div class="form-text mt-2">
+                                        Automatically switches WiiM presets based on metadata. Spoken-word titles (for example podcasts, audiobooks, radio drama and similar) use the <strong>voice</strong> preset; all other titles use the <strong>default</strong> preset. Configure both preset IDs in the WiiM app first, then enter those IDs here. If an ID is left empty or set to 0, that mode is ignored. Optionally, online catalogs (iTunes, OpenLibrary, MusicBrainz) are queried as fallback to improve spoken-word detection when local metadata is inconclusive.
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
