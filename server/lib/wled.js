@@ -8,6 +8,7 @@
 
 const http = require("http");
 const log = require("debug")("lib:wled");
+const voicePreset = require("./voicePreset.js");
 
 let switchOffTimer = null;
 
@@ -79,7 +80,20 @@ const sendPresetState = (serverSettings, presetKey) => {
     return false;
 };
 
+const isSpokenWordActive = () => {
+    const voiceState = voicePreset.getState();
+    return Boolean(voiceState && voiceState.lastDetection && voiceState.lastDetection.spokenWord === true);
+};
+
 const turnOn = (serverSettings) => {
+    const config = getWledConfig(serverSettings) || {};
+    const usePausePresetForSpokenWord = config.pausePresetForSpokenWord !== false;
+    const shouldUsePausePreset = usePausePresetForSpokenWord && isSpokenWordActive();
+
+    if (shouldUsePausePreset && sendPresetState(serverSettings, "pausePreset")) {
+        return;
+    }
+
     if (!sendPresetState(serverSettings, "playbackPreset")) {
         sendWledState(serverSettings, { on: true });
     }

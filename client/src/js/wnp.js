@@ -38,6 +38,7 @@ WNP.s = {
         "wledHost",
         "wledPreset",
         "wledPausePreset",
+        "wledPausePresetForSpokenWord",
         "wledOffDelaySec",
         "wledToggleUrl",
         "voicePresetId",
@@ -493,6 +494,14 @@ WNP.setUIListeners = function () {
         });
     }
 
+    if (this.r.wledPausePresetForSpokenWord) {
+        this.r.wledPausePresetForSpokenWord.addEventListener("change", function () {
+            WNP.emitWledSettingsUpdate({
+                pausePresetForSpokenWord: this.checked
+            });
+        });
+    }
+
     if (this.r.wledOffDelaySec) {
         this.r.wledOffDelaySec.addEventListener("change", function () {
             var delayValue = parseInt(this.value, 10);
@@ -850,6 +859,9 @@ WNP.setSocketDefinitions = function () {
         if (WNP.r.wledPausePreset) {
             var pausePresetValue = (typeof wledSettings.pausePreset === "number") ? wledSettings.pausePreset : 0;
             WNP.r.wledPausePreset.value = pausePresetValue;
+        }
+        if (WNP.r.wledPausePresetForSpokenWord) {
+            WNP.r.wledPausePresetForSpokenWord.checked = wledSettings.pausePresetForSpokenWord !== false;
         }
         if (WNP.r.wledOffDelaySec) {
             var offDelayValue = (typeof wledSettings.offDelaySec === "number") ? wledSettings.offDelaySec : 300;

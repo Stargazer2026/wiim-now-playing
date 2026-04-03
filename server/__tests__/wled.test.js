@@ -1,15 +1,20 @@
 const http = require("http");
-const wled = require("../lib/wled.js");
 
 jest.mock("http", () => ({
     request: jest.fn()
 }));
+jest.mock("../lib/voicePreset.js", () => ({
+    getState: jest.fn()
+}));
+const voicePreset = require("../lib/voicePreset.js");
+const wled = require("../lib/wled.js");
 
 describe("wled.js", () => {
     let req;
 
     beforeEach(() => {
         jest.useFakeTimers();
+        voicePreset.getState.mockReturnValue({ lastDetection: null });
         req = {
             on: jest.fn().mockReturnThis(),
             write: jest.fn(),
@@ -132,5 +137,45 @@ describe("wled.js", () => {
         wled.handleTransportState("PAUSED_PLAYBACK", "PLAYING", settings);
 
         expect(http.request).not.toHaveBeenCalled();
+    });
+
+    it("uses pause preset while spoken-word is active", () => {
+        voicePreset.getState.mockReturnValue({ lastDetection: { spokenWord: true } });
+        const settings = {
+            features: {
+                wled: {
+                    enabled: true,
+                    host: "wled.local",
+                    playbackPreset: 2,
+                    pausePreset: 7,
+                    pausePresetForSpokenWord: true
+                }
+            }
+        };
+
+        wled.handleTransportState("PLAYING", "STOPPED", settings);
+
+        expect(http.request).toHaveBeenCalledTimes(1);
+        expect(req.write).toHaveBeenCalledWith(JSON.stringify({ on: true, ps: 7 }));
+    });
+
+    it("uses playback preset for non-spoken playback", () => {
+        voicePreset.getState.mockReturnValue({ lastDetection: { spokenWord: false } });
+        const settings = {
+            features: {
+                wled: {
+                    enabled: true,
+                    host: "wled.local",
+                    playbackPreset: 2,
+                    pausePreset: 7,
+                    pausePresetForSpokenWord: true
+                }
+            }
+        };
+
+        wled.handleTransportState("PLAYING", "STOPPED", settings);
+
+        expect(http.request).toHaveBeenCalledTimes(1);
+        expect(req.write).toHaveBeenCalledWith(JSON.stringify({ on: true, ps: 2 }));
     });
 });

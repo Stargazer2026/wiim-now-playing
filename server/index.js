@@ -116,6 +116,7 @@ let serverSettings = { // Placeholder for current server settings
             "host": "",
             "playbackPreset": 0,
             "pausePreset": 0,
+            "pausePresetForSpokenWord": true,
             "offDelaySec": 300
         },
         "voicePreset": {
@@ -932,6 +933,9 @@ io.on("connection", (socket) => {
             }
             if (typeof msg.features.wled.pausePreset === "number") {
                 serverSettings.features.wled.pausePreset = Math.max(0, Math.round(msg.features.wled.pausePreset));
+            }
+            if (typeof msg.features.wled.pausePresetForSpokenWord === "boolean") {
+                serverSettings.features.wled.pausePresetForSpokenWord = msg.features.wled.pausePresetForSpokenWord;
             }
             if (typeof msg.features.wled.offDelaySec === "number") {
                 serverSettings.features.wled.offDelaySec = Math.max(0, Math.round(msg.features.wled.offDelaySec));

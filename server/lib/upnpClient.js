@@ -276,7 +276,9 @@ const updateDeviceMetadata = (io, deviceInfo, serverSettings) => {
                                             metadataTimeStamp: lib.getTimeStamp()
                                         });
                                         io.emit("metadata", deviceInfo.metadata);
-                                        voicePreset.applyPresetForMetadata(io, deviceInfo.metadata, serverSettings).catch((error) => {
+                                        voicePreset.applyPresetForMetadata(io, deviceInfo.metadata, serverSettings).then(() => {
+                                            wled.applySettings(serverSettings, deviceInfo && deviceInfo.state ? deviceInfo.state.CurrentTransportState : null);
+                                        }).catch((error) => {
                                             log("Voice preset update error", error);
                                         });
                                         if (serverSettings.features.coverArt.enabled && !hasUsableDeviceAlbumArt(deviceInfo.metadata)) {
@@ -327,7 +329,9 @@ const updateDeviceMetadata = (io, deviceInfo, serverSettings) => {
                                 metadataTimeStamp: lib.getTimeStamp()
                             });
                             io.emit("metadata", deviceInfo.metadata);
-                            voicePreset.applyPresetForMetadata(io, deviceInfo.metadata, serverSettings).catch((error) => {
+                            voicePreset.applyPresetForMetadata(io, deviceInfo.metadata, serverSettings).then(() => {
+                                wled.applySettings(serverSettings, deviceInfo && deviceInfo.state ? deviceInfo.state.CurrentTransportState : null);
+                            }).catch((error) => {
                                 log("Voice preset update error", error);
                             });
                             lyrics.getLyricsForMetadata(io, deviceInfo, serverSettings).catch((error) => {
@@ -388,7 +392,9 @@ const updateDeviceMetadata = (io, deviceInfo, serverSettings) => {
                                             metadataTimeStamp: lib.getTimeStamp()
                                         });
                                         io.emit("metadata", deviceInfo.metadata);
-                                        voicePreset.applyPresetForMetadata(io, deviceInfo.metadata, serverSettings).catch((error) => {
+                                        voicePreset.applyPresetForMetadata(io, deviceInfo.metadata, serverSettings).then(() => {
+                                            wled.applySettings(serverSettings, deviceInfo && deviceInfo.state ? deviceInfo.state.CurrentTransportState : null);
+                                        }).catch((error) => {
                                             log("Voice preset update error", error);
                                         });
                                         if (serverSettings.features.coverArt.enabled && !hasUsableDeviceAlbumArt(deviceInfo.metadata)) {
@@ -439,7 +445,9 @@ const updateDeviceMetadata = (io, deviceInfo, serverSettings) => {
                                 metadataTimeStamp: lib.getTimeStamp()
                             });
                             io.emit("metadata", deviceInfo.metadata);
-                            voicePreset.applyPresetForMetadata(io, deviceInfo.metadata, serverSettings).catch((error) => {
+                            voicePreset.applyPresetForMetadata(io, deviceInfo.metadata, serverSettings).then(() => {
+                                wled.applySettings(serverSettings, deviceInfo && deviceInfo.state ? deviceInfo.state.CurrentTransportState : null);
+                            }).catch((error) => {
                                 log("Voice preset update error", error);
                             });
                             lyrics.getLyricsForMetadata(io, deviceInfo, serverSettings).catch((error) => {
