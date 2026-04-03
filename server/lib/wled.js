@@ -9,6 +9,8 @@
 const http = require("http");
 const log = require("debug")("lib:wled");
 
+let switchOffTimer = null;
+
 const getWledConfig = (serverSettings) => {
     if (!serverSettings || !serverSettings.features) {
         return null;
@@ -56,17 +58,55 @@ const sendWledState = (serverSettings, payload) => {
     req.end();
 };
 
-const turnOn = (serverSettings) => {
-    const config = getWledConfig(serverSettings) || {};
-    const payload = { on: true };
-    if (typeof config.playbackPreset === "number" && config.playbackPreset > 0) {
-        payload.ps = config.playbackPreset;
+const clearSwitchOffTimer = () => {
+    if (switchOffTimer) {
+        clearTimeout(switchOffTimer);
+        switchOffTimer = null;
     }
-    sendWledState(serverSettings, payload);
+};
+
+const sendPresetState = (serverSettings, presetKey) => {
+    const config = getWledConfig(serverSettings) || {};
+    const presetValue = (typeof config[presetKey] === "number" && config[presetKey] > 0)
+        ? config[presetKey]
+        : 0;
+
+    if (presetValue > 0) {
+        sendWledState(serverSettings, { on: true, ps: presetValue });
+        return true;
+    }
+
+    return false;
+};
+
+const turnOn = (serverSettings) => {
+    if (!sendPresetState(serverSettings, "playbackPreset")) {
+        sendWledState(serverSettings, { on: true });
+    }
 };
 
 const turnOff = (serverSettings) => {
     sendWledState(serverSettings, { on: false });
+};
+
+const getConfiguredOffDelayMs = (serverSettings) => {
+    const config = getWledConfig(serverSettings) || {};
+    return Math.max(0, Math.round(config.offDelaySec || 0)) * 1000;
+};
+
+const scheduleTurnOff = (serverSettings) => {
+    const delayMs = getConfiguredOffDelayMs(serverSettings);
+    clearSwitchOffTimer();
+
+    if (delayMs === 0) {
+        turnOff(serverSettings);
+        return;
+    }
+
+    switchOffTimer = setTimeout(() => {
+        switchOffTimer = null;
+        turnOff(serverSettings);
+    }, delayMs);
 };
 
 const handleTransportState = (currentState, previousState, serverSettings) => {
@@ -75,14 +115,22 @@ const handleTransportState = (currentState, previousState, serverSettings) => {
     }
 
     if (currentState === "PLAYING") {
+        clearSwitchOffTimer();
         if (previousState !== "PLAYING") {
             turnOn(serverSettings);
         }
         return;
     }
 
-    if ((currentState === "PAUSED_PLAYBACK" || currentState === "STOPPED" || currentState === "NO_MEDIA_PRESENT") && previousState !== currentState) {
-        turnOff(serverSettings);
+    if (currentState === "PAUSED_PLAYBACK" && previousState !== currentState) {
+        clearSwitchOffTimer();
+        sendPresetState(serverSettings, "pausePreset");
+        scheduleTurnOff(serverSettings);
+        return;
+    }
+
+    if ((currentState === "STOPPED" || currentState === "NO_MEDIA_PRESENT") && previousState !== currentState) {
+        scheduleTurnOff(serverSettings);
     }
 };
 
@@ -90,13 +138,16 @@ const applySettings = (serverSettings, currentState) => {
     const config = getWledConfig(serverSettings);
     const hasHost = Boolean(config && config.host);
     if (!hasHost) {
+        clearSwitchOffTimer();
         return;
     }
     if (!canControlWled(serverSettings)) {
+        clearSwitchOffTimer();
         turnOff(serverSettings);
         return;
     }
     if (currentState === "PLAYING") {
+        clearSwitchOffTimer();
         turnOn(serverSettings);
     }
 };

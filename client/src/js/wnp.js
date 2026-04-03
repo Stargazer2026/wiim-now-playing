@@ -37,6 +37,8 @@ WNP.s = {
         "btnWledQuickToggle",
         "wledHost",
         "wledPreset",
+        "wledPausePreset",
+        "wledOffDelaySec",
         "wledToggleUrl",
         "voicePresetId",
         "defaultPresetId",
@@ -479,6 +481,30 @@ WNP.setUIListeners = function () {
         });
     }
 
+    if (this.r.wledPausePreset) {
+        this.r.wledPausePreset.addEventListener("change", function () {
+            var presetValue = parseInt(this.value, 10);
+            if (isNaN(presetValue) || presetValue < 0) {
+                presetValue = 0;
+            }
+            WNP.emitWledSettingsUpdate({
+                pausePreset: presetValue
+            });
+        });
+    }
+
+    if (this.r.wledOffDelaySec) {
+        this.r.wledOffDelaySec.addEventListener("change", function () {
+            var delayValue = parseInt(this.value, 10);
+            if (isNaN(delayValue) || delayValue < 0) {
+                delayValue = 0;
+            }
+            WNP.emitWledSettingsUpdate({
+                offDelaySec: delayValue
+            });
+        });
+    }
+
     if (this.r.voicePresetId) {
         this.r.voicePresetId.addEventListener("change", function () {
             var presetValue = parseInt(this.value, 10);
@@ -820,6 +846,14 @@ WNP.setSocketDefinitions = function () {
         if (WNP.r.wledPreset) {
             var presetValue = (typeof wledSettings.playbackPreset === "number") ? wledSettings.playbackPreset : 0;
             WNP.r.wledPreset.value = presetValue;
+        }
+        if (WNP.r.wledPausePreset) {
+            var pausePresetValue = (typeof wledSettings.pausePreset === "number") ? wledSettings.pausePreset : 0;
+            WNP.r.wledPausePreset.value = pausePresetValue;
+        }
+        if (WNP.r.wledOffDelaySec) {
+            var offDelayValue = (typeof wledSettings.offDelaySec === "number") ? wledSettings.offDelaySec : 300;
+            WNP.r.wledOffDelaySec.value = offDelayValue;
         }
         if (WNP.r.wledToggleUrl) {
             var relativeUrl = "/api/wled/toggle";

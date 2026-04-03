@@ -114,7 +114,9 @@ let serverSettings = { // Placeholder for current server settings
         "wled": {
             "enabled": false,
             "host": "",
-            "playbackPreset": 0
+            "playbackPreset": 0,
+            "pausePreset": 0,
+            "offDelaySec": 300
         },
         "voicePreset": {
             "voicePresetId": 0,
@@ -927,6 +929,12 @@ io.on("connection", (socket) => {
             }
             if (typeof msg.features.wled.playbackPreset === "number") {
                 serverSettings.features.wled.playbackPreset = Math.max(0, Math.round(msg.features.wled.playbackPreset));
+            }
+            if (typeof msg.features.wled.pausePreset === "number") {
+                serverSettings.features.wled.pausePreset = Math.max(0, Math.round(msg.features.wled.pausePreset));
+            }
+            if (typeof msg.features.wled.offDelaySec === "number") {
+                serverSettings.features.wled.offDelaySec = Math.max(0, Math.round(msg.features.wled.offDelaySec));
             }
             lib.saveSettings(serverSettings);
             sockets.getServerSettings(io, serverSettings);

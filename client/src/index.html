@@ -405,6 +405,16 @@
                                         <input class="form-control" type="number" id="wledPreset" min="0" step="1">
                                         <div class="form-text">Set to 0 to only switch power on/off without preset.</div>
                                     </div>
+                                    <div class="mt-2">
+                                        <label class="form-label" for="wledPausePreset">Preset for pause (optional)</label>
+                                        <input class="form-control" type="number" id="wledPausePreset" min="0" step="1">
+                                        <div class="form-text">Used when playback is paused. Set to 0 to use switch-off delay instead.</div>
+                                    </div>
+                                    <div class="mt-2">
+                                        <label class="form-label" for="wledOffDelaySec">Switch-off delay (seconds)</label>
+                                        <input class="form-control" type="number" id="wledOffDelaySec" min="0" step="1">
+                                        <div class="form-text">Keeps WLED active after pause/stop before it is switched off.</div>
+                                    </div>
                                     <div class="form-text mt-2">
                                         Toggle URL: <a id="wledToggleUrl" href="/api/wled/toggle">/api/wled/toggle</a>
                                     </div>
