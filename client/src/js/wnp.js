@@ -1154,12 +1154,10 @@ WNP.setSocketDefinitions = function () {
         );
         if (isCompactTvMode) {
             var compactStripParen = function (input) {
-                var text = (input || "").toString();
-                var pidx = text.indexOf("(");
-                if (pidx >= 0) {
-                    text = text.substring(0, pidx);
-                }
-                return text.trim();
+                return (input || "")
+                    .toString()
+                    .replace(/\([^)]*\)/g, "")
+                    .trim();
             };
             var displayTitle = compactStripParen(WNP.r.mediaTitle.innerText);
             var displayArtist = compactStripParen(WNP.r.mediaArtist.innerText);
